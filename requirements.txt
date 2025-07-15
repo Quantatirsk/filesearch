@@ -1,0 +1,39 @@
+# Core dependencies following technical report recommendations
+
+# High-performance PDF parsing (C-based MuPDF binding)
+PyMuPDF>=1.23.0
+
+# High-performance XLSX parsing (Rust-based Calamine binding)
+python-calamine>=0.2.0
+
+# Fast XML parsing for DOCX (C-based libxml2 binding)
+lxml>=4.9.0
+
+# Legacy Excel file support
+xlrd>=2.0.0
+
+# CSV and data processing (C-optimized pandas)
+pandas>=1.5.0
+
+# High-performance fuzzy string matching (C++ implementation)
+rapidfuzz>=3.0.0
+
+# DOC file parsing (antiword wrapper)
+pyantiword
+
+# Optional dependencies for fallback parsers
+# Uncomment if needed as alternatives
+
+# Alternative DOCX parser (simpler but potentially slower)
+# docx2txt>=0.8
+
+# Alternative XLSX parser (fallback for python-calamine)
+# openpyxl>=3.1.0
+
+# Web interface dependencies
+streamlit>=1.28.0
+psutil>=5.9.0
+
+# Development and testing dependencies
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
