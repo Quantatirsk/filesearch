@@ -2,15 +2,14 @@
 Search manager implementing the hybrid search model.
 
 Following the technical report's architecture:
-- SQLite FTS5 for fast exact/boolean search
+- SQLite FTS5 for fast exact search
 - Hybrid fuzzy search: FTS5 for candidate filtering + RapidFuzz for ranking
 - Path-based search for file system queries
 - Unified search interface
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 import time
-
 from core.database import DocumentDatabase
 from utils.fuzzy_search import FuzzySearchUtils
 from utils.file_utils import FileUtils
@@ -21,7 +20,7 @@ class SearchManager:
     High-performance search manager with hybrid fuzzy search.
     
     Following the technical report's recommendations:
-    1. FTS5 for lightning-fast exact and boolean searches
+    1. FTS5 for lightning-fast exact searches
     2. Hybrid fuzzy search model for intelligent similarity matching
     3. Path-based search for file system queries
     4. Unified interface for all search types
@@ -43,7 +42,7 @@ class SearchManager:
         
         Args:
             query: Search query string
-            search_type: Type of search ('exact', 'boolean', 'fuzzy', 'path')
+            search_type: Type of search ('exact', 'fuzzy', 'path')
             limit: Maximum number of results
             min_fuzzy_score: Minimum similarity score for fuzzy search
             
@@ -58,8 +57,6 @@ class SearchManager:
         try:
             if search_type == "exact":
                 results = self.search_exact(query, limit)
-            elif search_type == "boolean":
-                results = self.search_boolean(query, limit)
             elif search_type == "fuzzy":
                 results = self.search_fuzzy(query, limit, min_fuzzy_score)
             elif search_type == "path":
@@ -96,19 +93,6 @@ class SearchManager:
         with DocumentDatabase(self.db_path) as db:
             return db.search_exact(query, limit)
     
-    def search_boolean(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Perform boolean search using FTS5 query syntax.
-        
-        Args:
-            query: Boolean query (supports AND, OR, NOT)
-            limit: Maximum number of results
-            
-        Returns:
-            List of search results
-        """
-        with DocumentDatabase(self.db_path) as db:
-            return db.search_exact(query, limit)
     
     def search_fuzzy(self, query: str, limit: int = 100, 
                     min_score: float = 30.0) -> List[Dict[str, Any]]:

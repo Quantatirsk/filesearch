@@ -8,7 +8,6 @@ concurrent indexing, and hybrid fuzzy search capabilities.
 import argparse
 import sys
 import os
-from pathlib import Path
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -35,8 +34,8 @@ Examples:
   # Fuzzy search with minimum similarity score
   python main.py search "pythn programing" --type fuzzy --min-score 40
 
-  # Boolean search
-  python main.py search "python AND (tutorial OR guide)" --type boolean
+  # Fuzzy search
+  python main.py search "pythn programing" --type fuzzy --min-score 40
 
   # Path search
   python main.py search "*.pdf" --type path
@@ -65,7 +64,7 @@ Examples:
     # Search command
     search_parser = subparsers.add_parser('search', help='Search documents')
     search_parser.add_argument('query', help='Search query')
-    search_parser.add_argument('--type', choices=['exact', 'boolean', 'fuzzy', 'path'], 
+    search_parser.add_argument('--type', choices=['exact', 'fuzzy', 'path'], 
                               default='exact', help='Search type')
     search_parser.add_argument('--limit', type=int, default=20, 
                               help='Maximum number of results')
@@ -103,7 +102,7 @@ Examples:
     move_parser = subparsers.add_parser('move', help='Move files based on search results')
     move_parser.add_argument('query', help='Search query to find files')
     move_parser.add_argument('destination', help='Destination directory')
-    move_parser.add_argument('--type', choices=['exact', 'boolean', 'fuzzy', 'path'], 
+    move_parser.add_argument('--type', choices=['exact', 'fuzzy', 'path'], 
                             default='exact', help='Search type')
     move_parser.add_argument('--confirm', action='store_true', 
                             help='Confirm before moving files')

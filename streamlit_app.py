@@ -217,11 +217,10 @@ def search_section():
     with col2:
         search_type = st.selectbox(
             "搜索类型 | Search Type",
-            ["exact", "fuzzy", "boolean", "path"],
+            ["exact", "fuzzy", "path"],
             format_func=lambda x: {
                 "exact": "精确搜索",
                 "fuzzy": "模糊搜索", 
-                "boolean": "布尔搜索",
                 "path": "路径搜索"
             }[x]
         )
@@ -254,8 +253,6 @@ def perform_search(query: str, search_type: str, limit: int, min_score: float):
             results = search_manager.search_exact(query, limit)
         elif search_type == "fuzzy":
             results = search_manager.search_fuzzy(query, limit, min_score)
-        elif search_type == "boolean":
-            results = search_manager.search_boolean(query, limit)
         elif search_type == "path":
             results = search_manager.search_path(query, limit)
         
