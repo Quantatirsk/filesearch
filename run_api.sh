@@ -4,7 +4,7 @@
 
 # Default configuration
 HOST=${HOST:-"0.0.0.0"}
-PORT=${PORT:-8000}
+PORT=${PORT:-8001}
 DB_PATH=${DB_PATH:-"documents.db"}
 RELOAD=${RELOAD:-false}
 
