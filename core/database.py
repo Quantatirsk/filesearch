@@ -220,18 +220,35 @@ class DocumentDatabase:
     
     def search_exact(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Perform exact/boolean search using FTS5.
+        Perform exact/boolean search using LIKE for multiple keywords.
         
         Args:
-            query: Search query string
+            query: Search query string (supports multiple keywords separated by space)
             limit: Maximum number of results
             
         Returns:
             List of search results with metadata
         """
         cursor = self.conn.cursor()
-        # Use LIKE search for better Chinese support
-        cursor.execute("""
+        
+        # Split query into keywords for AND search
+        keywords = [k.strip() for k in query.split() if k.strip()]
+        
+        if not keywords:
+            return []
+        
+        # Build WHERE clause for AND search (all keywords must be present)
+        where_conditions = []
+        params = []
+        
+        for keyword in keywords:
+            where_conditions.append("docs_fts.content LIKE ?")
+            params.append(f'%{keyword}%')
+        
+        where_clause = " AND ".join(where_conditions)
+        params.append(limit)
+        
+        cursor.execute(f"""
             SELECT 
                 m.file_path,
                 m.file_type,
@@ -241,9 +258,9 @@ class DocumentDatabase:
                 docs_fts.content as highlighted_content
             FROM docs_fts
             JOIN docs_meta m ON docs_fts.doc_id = m.doc_id
-            WHERE docs_fts.content LIKE ?
+            WHERE {where_clause}
             LIMIT ?
-        """, (f'%{query}%', limit))
+        """, params)
         
         results = []
         for row in cursor.fetchall():
@@ -258,25 +275,90 @@ class DocumentDatabase:
         
         return results
     
+    def search_fts5(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Perform FTS5 full-text search for fuzzy search candidates.
+        
+        Args:
+            query: FTS5 query string (formatted for FTS5 syntax)
+            limit: Maximum number of results
+            
+        Returns:
+            List of search results with metadata
+        """
+        cursor = self.conn.cursor()
+        
+        try:
+            cursor.execute("""
+                SELECT 
+                    m.file_path,
+                    m.file_type,
+                    m.file_size,
+                    m.last_indexed,
+                    m.file_hash,
+                    docs_fts.content as highlighted_content
+                FROM docs_fts
+                JOIN docs_meta m ON docs_fts.doc_id = m.doc_id
+                WHERE docs_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (query, limit))
+            
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    'file_path': row['file_path'],
+                    'file_type': row['file_type'],
+                    'file_size': row['file_size'],
+                    'last_modified': row['last_indexed'],  # 兼容性
+                    'file_hash': row['file_hash'],
+                    'content': row['highlighted_content']  # 兼容性
+                })
+            
+            return results
+            
+        except Exception as e:
+            print(f"FTS5 search error: {e}")
+            # Fallback to LIKE search if FTS5 fails
+            return self.search_exact(query, limit)
+    
     def search_path(self, path_query: str, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Search documents by file path.
         
         Args:
-            path_query: Path search pattern
+            path_query: Path search pattern (supports multiple keywords separated by space)
             limit: Maximum number of results
             
         Returns:
             List of matching documents
         """
         cursor = self.conn.cursor()
-        cursor.execute("""
+        
+        # Split query into keywords for AND search
+        keywords = [k.strip() for k in path_query.split() if k.strip()]
+        
+        if not keywords:
+            return []
+        
+        # Build WHERE clause for AND search (all keywords must be present in path)
+        where_conditions = []
+        params = []
+        
+        for keyword in keywords:
+            where_conditions.append("file_path LIKE ?")
+            params.append(f'%{keyword}%')
+        
+        where_clause = " AND ".join(where_conditions)
+        params.append(limit)
+        
+        cursor.execute(f"""
             SELECT file_path, file_type, file_size, last_indexed
             FROM docs_meta
-            WHERE file_path LIKE ?
+            WHERE {where_clause}
             ORDER BY file_path
             LIMIT ?
-        """, (f'%{path_query}%', limit))
+        """, params)
         
         results = []
         for row in cursor.fetchall():

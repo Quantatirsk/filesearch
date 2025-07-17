@@ -100,3 +100,6 @@ tests/demo_*_content.txt
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# YoYo AI version control directory
+.yoyo/

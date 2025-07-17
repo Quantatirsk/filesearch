@@ -8,6 +8,11 @@ Following the technical report's recommendation for the hybrid search model:
 
 from typing import List, Dict, Any, Optional, Tuple
 import re
+try:
+    from .chinese_tokenizer import chinese_tokenizer
+    JIEBA_AVAILABLE = True
+except ImportError:
+    JIEBA_AVAILABLE = False
 
 
 class FuzzySearchUtils:
@@ -30,11 +35,23 @@ class FuzzySearchUtils:
         Returns:
             List of processed query terms
         """
+        # Use jieba for Chinese text tokenization if available
+        if JIEBA_AVAILABLE and any('\u4e00' <= char <= '\u9fff' for char in query):
+            return chinese_tokenizer.tokenize_query(query)
+        
+        # Fallback to original method for non-Chinese text
         # Remove special characters and normalize whitespace
         clean_query = re.sub(r'[^\w\s]', ' ', query.lower())
         
         # Split into terms and filter out very short terms
-        terms = [term.strip() for term in clean_query.split() if len(term.strip()) > 2]
+        # For Chinese text, allow 2-character terms; for other languages, require 3+ characters
+        terms = []
+        for term in clean_query.split():
+            term = term.strip()
+            if len(term) > 2:  # 3+ characters for all languages
+                terms.append(term)
+            elif len(term) == 2 and any('\u4e00' <= char <= '\u9fff' for char in term):  # 2-character Chinese terms
+                terms.append(term)
         
         return terms
     
@@ -52,16 +69,28 @@ class FuzzySearchUtils:
         if not terms:
             return ""
         
-        # Create OR query for broad matching
-        # This will catch documents containing any of the terms
+        # Create AND query for more precise matching
+        # This will catch documents containing all of the terms
         fts_terms = []
         for term in terms:
-            # Add the term as-is
-            fts_terms.append(term)
-            # Also add prefix search for partial matches
-            fts_terms.append(f"{term}*")
+            # For Chinese text, use multiple strategies:
+            # 1. Exact match
+            # 2. Prefix match
+            # 3. Character-level prefix matches for better Chinese support
+            term_variations = [term, f"{term}*"]
+            
+            # Add character-level prefixes for Chinese text
+            if len(term) > 1 and any('\u4e00' <= char <= '\u9fff' for char in term):
+                # For Chinese text, add progressive prefix matches
+                # Start from 2 characters to avoid overly broad matches
+                for i in range(2, len(term)):
+                    prefix = term[:i] + "*"
+                    term_variations.append(prefix)
+            
+            term_group = f"({' OR '.join(term_variations)})"
+            fts_terms.append(term_group)
         
-        return " OR ".join(fts_terms)
+        return " AND ".join(fts_terms)
     
     @staticmethod
     def calculate_similarity(query: str, text: str, method: str = "ratio") -> float:

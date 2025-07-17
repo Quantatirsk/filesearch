@@ -61,6 +61,8 @@ class SearchManager:
                 results = self.search_fuzzy(query, limit, min_fuzzy_score)
             elif search_type == "path":
                 results = self.search_path(query, limit)
+            elif search_type == "hybrid":
+                results = self.search_hybrid(query, limit, min_fuzzy_score)
             else:
                 return self._error_result(f"Unsupported search type: {search_type}")
             
@@ -123,7 +125,7 @@ class SearchManager:
         with DocumentDatabase(self.db_path) as db:
             # Get more candidates than needed for better fuzzy ranking
             candidate_limit = min(limit * 5, 1000)
-            candidates = db.search_exact(fts_query, candidate_limit)
+            candidates = db.search_fts5(fts_query, candidate_limit)
             
             if not candidates:
                 return []
@@ -351,6 +353,99 @@ class SearchManager:
             'search_time': 0,
             'limit': 0
         }
+    
+    def search_hybrid(self, query: str, limit: int = 100, 
+                     min_fuzzy_score: float = 30.0) -> List[Dict[str, Any]]:
+        """
+        Perform hybrid search combining exact, fuzzy, and path searches.
+        
+        This method performs all three search types and merges results,
+        removing duplicates and providing the best match for each file.
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results
+            min_fuzzy_score: Minimum similarity score for fuzzy search
+            
+        Returns:
+            List of merged and deduplicated search results
+        """
+        all_results = []
+        seen_paths = {}  # file_path -> best_result
+        
+        # 1. Exact search (highest priority)
+        try:
+            exact_results = self.search_exact(query, limit)
+            for result in exact_results:
+                result['search_method'] = 'exact'
+                result['priority'] = 1
+                file_path = result['file_path']
+                
+                # Always prefer exact matches
+                if file_path not in seen_paths:
+                    seen_paths[file_path] = result
+                    all_results.append(result)
+        except Exception as e:
+            print(f"Error in exact search: {e}")
+        
+        # 2. Fuzzy search (medium priority)
+        try:
+            fuzzy_results = self.search_fuzzy(query, limit, min_fuzzy_score)
+            for result in fuzzy_results:
+                result['search_method'] = 'fuzzy'
+                result['priority'] = 2
+                file_path = result['file_path']
+                
+                # Only add if not already found by exact search
+                if file_path not in seen_paths:
+                    seen_paths[file_path] = result
+                    all_results.append(result)
+                elif seen_paths[file_path]['priority'] > 2:
+                    # Replace if current result has lower priority
+                    seen_paths[file_path] = result
+                    # Update in all_results
+                    for i, res in enumerate(all_results):
+                        if res['file_path'] == file_path:
+                            all_results[i] = result
+                            break
+        except Exception as e:
+            print(f"Error in fuzzy search: {e}")
+        
+        # 3. Path search (lowest priority)
+        try:
+            path_results = self.search_path(query, limit)
+            for result in path_results:
+                result['search_method'] = 'path'
+                result['priority'] = 3
+                file_path = result['file_path']
+                
+                # Only add if not already found by exact or fuzzy search
+                if file_path not in seen_paths:
+                    seen_paths[file_path] = result
+                    all_results.append(result)
+                elif seen_paths[file_path]['priority'] > 3:
+                    # Replace if current result has lower priority
+                    seen_paths[file_path] = result
+                    # Update in all_results
+                    for i, res in enumerate(all_results):
+                        if res['file_path'] == file_path:
+                            all_results[i] = result
+                            break
+        except Exception as e:
+            print(f"Error in path search: {e}")
+        
+        # Sort results by priority (exact > fuzzy > path) and then by relevance
+        all_results.sort(key=lambda x: (
+            x['priority'],
+            -x.get('match_score', 0)  # Higher score first
+        ))
+        
+        # Remove priority field from final results (internal use only)
+        for result in all_results:
+            result.pop('priority', None)
+        
+        # Limit final results
+        return all_results[:limit]
     
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """Return an error result."""

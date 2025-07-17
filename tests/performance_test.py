@@ -4,13 +4,12 @@ import gc
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-from test import doc_text
-from pyantiword.antiword_wrapper import extract_text_with_antiword
+from doc2txt import extract_text
 
 def process_single_file(task_id, doc_file_path, output_dir):
     """Process a single doc file and return the extracted text"""
     try:
-        text = doc_text(doc_file_path)
+        text = extract_text(doc_file_path, optimize_format=True)
         
         # Write extracted text to individual txt file
         output_file = os.path.join(output_dir, f"extracted_{task_id:05d}.txt")
@@ -55,7 +54,7 @@ def performance_test():
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_id = {
-            executor.submit(process_single_file, i + 1, "ee.doc", output_dir): i + 1
+            executor.submit(process_single_file, i + 1, "demo.doc", output_dir): i + 1
             for i in range(10000)
         }
         

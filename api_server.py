@@ -8,6 +8,9 @@ supporting indexing, searching, and management operations.
 
 import sys
 import os
+import signal
+import psutil
+import socket
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import tempfile
@@ -32,7 +35,7 @@ from parsers.base_parser import ParserFactory
 # Pydantic models for request/response validation
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query string")
-    search_type: str = Field("exact", description="Search type: exact, fuzzy, path")
+    search_type: str = Field("hybrid", description="Search type: exact, fuzzy, path, hybrid")
     limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
     min_fuzzy_score: float = Field(30.0, ge=0.0, le=100.0, description="Minimum fuzzy similarity score")
 
@@ -107,6 +110,93 @@ def get_database(db_path: str = DEFAULT_DB_PATH) -> DocumentDatabase:
     return DocumentDatabase(db_path)
 
 
+def is_port_in_use(port: int, host: str = "localhost") -> bool:
+    """Check if a port is already in use"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1)
+            result = sock.connect_ex((host, port))
+            return result == 0
+    except Exception:
+        return False
+
+
+def kill_process_on_port(port: int) -> bool:
+    """Kill process using the specified port"""
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                # Get network connections for this process
+                connections = proc.net_connections()
+                for conn in connections:
+                    if hasattr(conn, 'laddr') and conn.laddr and conn.laddr.port == port:
+                        print(f"🔄 Found process {proc.info['pid']} ({proc.info['name']}) using port {port}")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                            print(f"✅ Successfully terminated process {proc.info['pid']}")
+                        except psutil.TimeoutExpired:
+                            # Force kill if terminate doesn't work
+                            proc.kill()
+                            print(f"💥 Force killed process {proc.info['pid']}")
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            except Exception:
+                # Skip processes we can't access
+                continue
+    except Exception as e:
+        print(f"❌ Error killing process on port {port}: {e}")
+        return False
+    return False
+
+
+def cleanup_port(port: int, host: str = "localhost") -> None:
+    """Clean up port before starting server"""
+    # Check both IPv4 and IPv6
+    ipv4_in_use = is_port_in_use(port, host)
+    ipv6_in_use = is_port_in_use(port, "::1") if host in ["localhost", "127.0.0.1"] else False
+    
+    if ipv4_in_use or ipv6_in_use:
+        print(f"🚨 Port {port} is already in use, attempting to free it...")
+        killed = kill_process_on_port(port)
+        if killed:
+            print(f"✅ Port {port} has been freed")
+            # Wait a moment for the port to be fully released
+            import time
+            time.sleep(2)
+            
+            # Verify port is actually free
+            if is_port_in_use(port, host):
+                print(f"⚠️  Port {port} still appears to be in use after cleanup")
+            else:
+                print(f"🎉 Port {port} is now available")
+        else:
+            print(f"⚠️  Could not free port {port}, trying alternative method...")
+            # Alternative: Use lsof to find and kill process
+            try:
+                import subprocess
+                result = subprocess.run(['lsof', '-ti', f':{port}'], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.stdout.strip():
+                    pids = result.stdout.strip().split('\n')
+                    for pid in pids:
+                        try:
+                            subprocess.run(['kill', '-9', pid], timeout=5)
+                            print(f"💥 Force killed process {pid} using lsof")
+                        except Exception:
+                            pass
+                    import time
+                    time.sleep(1)
+            except Exception:
+                pass
+            
+            if is_port_in_use(port, host):
+                print(f"❌ Port {port} is still in use - server startup may fail")
+    else:
+        print(f"✅ Port {port} is available")
+
+
 @app.get("/", response_model=Dict[str, str])
 async def root():
     """Root endpoint with API information"""
@@ -149,6 +239,7 @@ async def search_documents(
     - **exact**: Exact phrase matching
     - **fuzzy**: Fuzzy similarity matching  
     - **path**: File path pattern matching
+    - **hybrid**: Combined search using all methods with deduplication
     """
     try:
         search_manager = get_search_manager(db_path)
@@ -205,11 +296,10 @@ async def index_directory(
         if not directory_path.is_dir():
             raise HTTPException(status_code=400, detail="Path is not a directory")
         
-        indexer = DocumentIndexer(db_path)
+        indexer = DocumentIndexer(db_path, max_workers=request.workers)
         stats = indexer.index_directory(
             str(directory_path),
-            force_reindex=request.force,
-            num_workers=request.workers
+            force_reindex=request.force
         )
         
         return IndexResponse(
@@ -386,7 +476,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Document Search API Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--port", type=int, default=8001, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help="Database file path")
     
@@ -401,9 +491,18 @@ if __name__ == "__main__":
     print(f"📚 API Docs: http://{args.host}:{args.port}/docs")
     print(f"📖 ReDoc: http://{args.host}:{args.port}/redoc")
     
-    uvicorn.run(
-        "api_server:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload
-    )
+    # Clean up port before starting
+    cleanup_port(args.port, args.host)
+    
+    try:
+        uvicorn.run(
+            "api_server:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 Server stopped by user")
+    except Exception as e:
+        print(f"❌ Server failed to start: {e}")
+        sys.exit(1)
