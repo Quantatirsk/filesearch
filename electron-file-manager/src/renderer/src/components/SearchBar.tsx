@@ -46,13 +46,16 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
     // 移除自动搜索逻辑，只更新搜索类型
   }, [])
 
+
   // 执行搜索的统一方法
   const executeSearch = useCallback(() => {
     if (inputValue.trim() && isBackendRunning) {
       setLocalSearching(true)
       setTimeout(() => setLocalSearching(false), 200)
-      performImmediateSearch(inputValue, searchType)
-      onSearch?.(inputValue, searchType)
+      
+      // 执行搜索，搜索关键词会在 useSearch 中设置
+      performImmediateSearch(inputValue.trim(), searchType)
+      onSearch?.(inputValue.trim(), searchType)
     }
   }, [inputValue, searchType, isBackendRunning, performImmediateSearch, onSearch])
 

@@ -21,11 +21,13 @@ export const useSearch = () => {
     if (!isBackendRunning) {
       console.warn('搜索失败: Python后端未运行')
       setSearchResults([])
-      setSearchQuery('')
+      // 不清空搜索关键词，让用户知道他们之前搜索的是什么
+      // setSearchQuery('')
       return
     }
 
     // 更新搜索查询字符串
+    console.log('DEBUG: useSearch setting searchQuery to:', query)
     setSearchQuery(query)
     setSearching(true)
     
@@ -43,30 +45,38 @@ export const useSearch = () => {
 
       if (result.success) {
         // 转换后端数据格式为前端FileItem格式
-        const convertedResults = result.results.map((item: any) => ({
-          id: item.file_path || item.id || Math.random().toString(36),
-          file_path: item.file_path,
-          file_name: item.file_name || item.file_path?.split('/').pop() || item.file_path?.split('\\').pop() || 'Unknown',
-          file_size: item.file_size || 0,
-          file_type: item.file_type || 'unknown',
-          last_modified: item.last_modified || item.last_indexed || new Date().toISOString(),
-          content_preview: item.highlighted_content || item.content_preview || item.fuzzy_highlight || '',
-          match_score: item.match_score || item.fuzzy_score || 100
-        }))
+        const convertedResults = result.results.map((item: any) => {
+          // 处理时间戳
+          let lastModified = new Date().toISOString()
+          if (item.last_modified) {
+            // 如果是数字时间戳，需要检查是秒还是毫秒
+            if (typeof item.last_modified === 'number') {
+              // 如果时间戳小于 1e12，说明是秒级时间戳，需要转换为毫秒
+              const timestamp = item.last_modified < 1e12 ? item.last_modified * 1000 : item.last_modified
+              lastModified = new Date(timestamp).toISOString()
+            } else if (typeof item.last_modified === 'string') {
+              lastModified = item.last_modified
+            }
+          } else if (item.last_indexed) {
+            lastModified = item.last_indexed
+          }
+          
+          return {
+            id: item.file_path || item.id || Math.random().toString(36),
+            file_path: item.file_path,
+            file_name: item.file_name || item.file_path?.split('/').pop() || item.file_path?.split('\\').pop() || 'Unknown',
+            file_size: item.file_size || 0,
+            file_type: item.file_type || 'unknown',
+            last_modified: lastModified,
+            content_preview: item.highlighted_content || item.content_preview || item.fuzzy_highlight || '',
+            match_score: item.match_score || item.fuzzy_score || 100
+          }
+        })
         
         console.log('Converted search results:', convertedResults)
         
-        // 使用 requestIdleCallback 来延迟更新搜索结果，避免阻塞用户输入
-        if (window.requestIdleCallback) {
-          window.requestIdleCallback(() => {
-            setSearchResults(convertedResults)
-          })
-        } else {
-          // 降级处理
-          setTimeout(() => {
-            setSearchResults(convertedResults)
-          }, 0)
-        }
+        // 直接更新搜索结果，避免延迟影响用户交互
+        setSearchResults(convertedResults)
       } else {
         console.error('Search failed:', result.error)
         setSearchResults([])

@@ -4,6 +4,7 @@ import { FileItem } from '../types'
 import { useAppStore } from '../stores/app-store'
 import { formatFileSize, formatDate, getFileIcon } from '../lib/utils'
 import { cn } from '../lib/utils'
+import { Checkbox } from './ui/checkbox'
 
 interface FileListProps {
   containerRef: React.RefObject<HTMLDivElement>
@@ -26,30 +27,17 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     overscan: 10
   })
 
-  const handleItemClick = useCallback((filePath: string, event: React.MouseEvent) => {
-    if (event.ctrlKey || event.metaKey) {
-      // Ctrl/Cmd + click for multi-select
-      toggleFileSelection(filePath)
-    } else if (event.shiftKey && selectedFiles.length > 0) {
-      // Shift + click for range select
-      const lastSelected = selectedFiles[selectedFiles.length - 1]
-      const lastIndex = searchResults.findIndex(f => f.file_path === lastSelected)
-      const currentIndex = searchResults.findIndex(f => f.file_path === filePath)
-      
-      if (lastIndex !== -1 && currentIndex !== -1) {
-        const start = Math.min(lastIndex, currentIndex)
-        const end = Math.max(lastIndex, currentIndex)
-        const rangeFiles = searchResults.slice(start, end + 1).map(f => f.file_path)
-        
-        // Add range to selection
-        const newSelection = [...new Set([...selectedFiles, ...rangeFiles])]
-        useAppStore.setState({ selectedFiles: newSelection })
-      }
+  const handleCheckboxChange = useCallback((filePath: string, checked: boolean) => {
+    if (checked) {
+      // 添加到选中列表
+      const newSelection = [...selectedFiles, filePath]
+      useAppStore.setState({ selectedFiles: newSelection })
     } else {
-      // Normal click - single select
-      useAppStore.setState({ selectedFiles: [filePath] })
+      // 从选中列表移除
+      const newSelection = selectedFiles.filter(f => f !== filePath)
+      useAppStore.setState({ selectedFiles: newSelection })
     }
-  }, [selectedFiles, searchResults, toggleFileSelection])
+  }, [selectedFiles])
 
   const handleOpenFile = useCallback(async (filePath: string, event: React.MouseEvent) => {
     event.preventDefault()
@@ -116,11 +104,11 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     }
   }, [selectAllFiles, clearSelection])
 
-  // 进一步优化FileRow组件，减少不必要的重新渲染
-  const FileRow = React.memo(({ file, isSelected, onItemClick, onOpenFile, onOpenDirectory }: { 
+  // 优化FileRow组件，使用勾选框替代点击选中
+  const FileRow = React.memo(({ file, isSelected, onCheckboxChange, onOpenFile, onOpenDirectory }: { 
     file: FileItem; 
     isSelected: boolean;
-    onItemClick: (filePath: string, event: React.MouseEvent) => void;
+    onCheckboxChange: (filePath: string, checked: boolean) => void;
     onOpenFile: (filePath: string, event: React.MouseEvent) => void;
     onOpenDirectory: (filePath: string, event: React.MouseEvent) => void;
   }) => {
@@ -128,23 +116,24 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       <div
         className={cn(
           "file-item flex items-center px-4 py-3 border-b border-border/50 hover:bg-secondary/50 transition-colors",
-          isSelected && "selected bg-primary/10 border-l-2 border-primary"
+          isSelected && "selected bg-primary/10"
         )}
-        onClick={(e) => {
-          // 只在点击空白区域时选择文件
-          if (e.target === e.currentTarget) {
-            onItemClick(file.file_path, e)
-          }
-        }}
         style={{ userSelect: 'none' }}
       >
-    
-      <div className="flex items-center space-x-3 flex-1 min-w-0">
-        <div className="text-2xl flex-shrink-0">
-          {getFileIcon(file.file_type)}
+        {/* 勾选框 */}
+        <div className="flex-shrink-0 mr-3">
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) => onCheckboxChange(file.file_path, checked as boolean)}
+          />
         </div>
-        
-        <div className="flex-1 min-w-0">
+    
+        <div className="flex items-center space-x-3 flex-1 min-w-0">
+          <div className="text-2xl flex-shrink-0">
+            {getFileIcon(file.file_type)}
+          </div>
+          
+          <div className="flex-1 min-w-0">
           {/* 文件名 - 可点击打开文件 */}
           <div className="font-medium text-sm truncate">
             <button
@@ -182,9 +171,9 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           <div className="text-xs text-muted-foreground">
             {formatDate(file.last_modified)}
           </div>
-          {file.match_score && (
-            <div className="text-xs text-primary font-medium">
-              {Math.round(file.match_score)}%
+          {file.match_score && file.match_score < 100 && (
+            <div className="text-xs text-primary font-medium" title="匹配度">
+              匹配 {Math.round(file.match_score)}%
             </div>
           )}
         </div>
@@ -252,7 +241,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
               <FileRow 
                 file={file} 
                 isSelected={isSelected} 
-                onItemClick={handleItemClick}
+                onCheckboxChange={handleCheckboxChange}
                 onOpenFile={handleOpenFile}
                 onOpenDirectory={handleOpenDirectory}
               />

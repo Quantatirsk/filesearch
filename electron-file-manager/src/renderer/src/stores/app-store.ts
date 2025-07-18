@@ -60,7 +60,10 @@ export const useAppStore = create<AppStore>()(
       
       setSearching: (searching) => set({ isSearching: searching }),
       
-      setSearchQuery: (query) => set({ searchQuery: query }),
+      setSearchQuery: (query) => {
+        console.log('DEBUG: setSearchQuery called with:', query)
+        set({ searchQuery: query })
+      },
       
       setStats: (stats) => set({ stats }),
       

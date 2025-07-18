@@ -4,7 +4,8 @@ import {
   RefreshCw, 
   Copy, 
   Trash2, 
-  Settings
+  Settings,
+  CheckSquare
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -25,7 +26,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 }) => {
   const { 
     isBackendRunning, 
-    selectedFiles, 
+    selectedFiles,
+    searchResults,
+    selectAllFiles,
+    clearSelection,
     setStats
   } = useAppStore()
   
@@ -42,10 +46,22 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     }
   }, [isBackendRunning, getStats, setStats])
 
+  const handleSelectAll = useCallback(() => {
+    if (selectedFiles.length === searchResults.length) {
+      // 如果已全选，则取消全选
+      clearSelection()
+    } else {
+      // 否则全选
+      selectAllFiles()
+    }
+  }, [selectedFiles.length, searchResults.length, selectAllFiles, clearSelection])
+
+  const isAllSelected = searchResults.length > 0 && selectedFiles.length === searchResults.length
+
 
   return (
-    <div className="toolbar flex items-center justify-between px-4 py-2 bg-card border-b border-border">
-      <div className="flex items-center space-x-2">
+    <div className="toolbar flex items-center justify-between px-3 py-1.5 bg-card border-b border-border">
+      <div className="flex items-center space-x-1.5">
 
         {/* Directory operations */}
         <Button
@@ -53,8 +69,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           size="sm"
           onClick={onSelectDirectory}
           disabled={!isBackendRunning}
+          className="h-7 px-2 text-xs"
         >
-          <FolderOpen className="h-4 w-4 mr-2" />
+          <FolderOpen className="h-3 w-3 mr-1" />
           添加目录
         </Button>
 
@@ -63,12 +80,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           size="sm"
           onClick={handleRefreshStats}
           disabled={!isBackendRunning}
+          className="h-7 px-2 text-xs"
         >
-          <RefreshCw className="h-4 w-4 mr-2" />
+          <RefreshCw className="h-3 w-3 mr-1" />
           刷新
         </Button>
 
-        <Separator orientation="vertical" className="h-6" />
+        <Separator orientation="vertical" className="h-5" />
+
+        {/* Selection operations */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSelectAll}
+          disabled={searchResults.length === 0}
+          className="h-7 px-2 text-xs"
+        >
+          <CheckSquare className="h-3 w-3 mr-1" />
+          {isAllSelected ? '取消全选' : '全选'}
+        </Button>
+
+        <Separator orientation="vertical" className="h-5" />
 
         {/* File operations */}
         <Button
@@ -76,9 +108,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           size="sm"
           onClick={onCopyFiles}
           disabled={selectedFiles.length === 0}
+          className="h-7 px-2 text-xs"
         >
-          <Copy className="h-4 w-4 mr-2" />
-          复制 ({selectedFiles.length})
+          <Copy className="h-3 w-3 mr-1" />
+          导出 ({selectedFiles.length})
         </Button>
 
         <Button
@@ -86,17 +119,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           size="sm"
           onClick={onDeleteFiles}
           disabled={selectedFiles.length === 0}
+          className="h-7 px-2 text-xs"
         >
-          <Trash2 className="h-4 w-4 mr-2" />
+          <Trash2 className="h-3 w-3 mr-1" />
           删除 ({selectedFiles.length})
         </Button>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-1.5">
         {/* Settings */}
         <SettingsDialog>
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4" />
+          <Button variant="outline" size="sm" className="h-7 px-2">
+            <Settings className="h-3 w-3" />
           </Button>
         </SettingsDialog>
       </div>

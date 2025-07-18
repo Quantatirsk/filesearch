@@ -1,18 +1,26 @@
-import React, { useRef, useCallback, useEffect } from 'react'
+import React, { useRef, useCallback, useEffect, useState } from 'react'
 import { SearchBar } from './components/SearchBar'
 import { FileList } from './components/FileList'
 import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
+import { FolderNameDialog } from './components/FolderNameDialog'
 import { useAppStore } from './stores/app-store'
 import { useApi } from './hooks/useApi'
 
 function App() {
   const fileListRef = useRef<HTMLDivElement>(null)
+  const [showFolderDialog, setShowFolderDialog] = useState(false)
+  const [pendingCopyData, setPendingCopyData] = useState<{
+    files: string[]
+    baseDirectory: string
+    suggestedName: string
+  } | null>(null)
   
   const { 
     selectedFiles, 
     isBackendRunning,
+    searchQuery,
     setCurrentDirectory, 
     clearSelection,
     setBackendRunning,
@@ -129,18 +137,71 @@ function App() {
 
   const handleCopyFiles = useCallback(async () => {
     if (selectedFiles.length === 0) return
+    
     try {
-      const destination = await window.electronAPI.files.selectDirectory()
-      if (destination) {
-        const result = await window.electronAPI.files.copy(selectedFiles, destination)
-        if (result.success) {
-          clearSelection()
-        }
+      // 调试：检查搜索关键词
+      console.log('DEBUG: searchQuery value:', searchQuery)
+      console.log('DEBUG: searchQuery type:', typeof searchQuery)
+      console.log('DEBUG: searchQuery exists:', !!searchQuery)
+      
+      // 生成基于搜索关键词的目录名
+      let folderName = 'copied_files' // 默认名称
+      if (searchQuery && searchQuery.trim()) {
+        // 清理搜索关键词，移除特殊字符，用下划线替换空格
+        folderName = searchQuery.trim()
+          .replace(/[<>:"/\\|?*]/g, '') // 移除Windows不允许的字符
+          .replace(/\s+/g, '_') // 用下划线替换空格
+          .slice(0, 100) // 限制长度
+        console.log('DEBUG: Generated folderName:', folderName)
+      } else {
+        console.log('DEBUG: Using default folderName because searchQuery is empty or falsy')
+      }
+      
+      // 让用户选择基目录
+      const baseDirectory = await window.electronAPI.files.selectDirectory()
+      if (baseDirectory) {
+        // 设置待处理的导出数据并显示对话框
+        setPendingCopyData({
+          files: selectedFiles,
+          baseDirectory,
+          suggestedName: folderName
+        })
+        setShowFolderDialog(true)
       }
     } catch (error) {
       console.error('Failed to copy files:', error)
+      alert(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
     }
-  }, [selectedFiles, clearSelection])
+  }, [selectedFiles, searchQuery])
+
+  const handleFolderNameConfirm = useCallback(async (folderName: string) => {
+    if (!pendingCopyData) return
+    
+    try {
+      // 构建完整的目标路径
+      const destination = `${pendingCopyData.baseDirectory}${pendingCopyData.baseDirectory.endsWith('/') || pendingCopyData.baseDirectory.endsWith('\\') ? '' : '/'}${folderName}`
+      
+      // 导出文件到目标目录
+      const result = await window.electronAPI.files.copy(pendingCopyData.files, destination)
+      if (result.success) {
+        clearSelection()
+        alert(`成功导出 ${pendingCopyData.files.length} 个文件到：\n${destination}`)
+      } else {
+        alert(`导出操作失败：${result.message}`)
+      }
+    } catch (error) {
+      console.error('Failed to copy files:', error)
+      alert(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
+    } finally {
+      setShowFolderDialog(false)
+      setPendingCopyData(null)
+    }
+  }, [pendingCopyData, clearSelection])
+
+  const handleFolderNameCancel = useCallback(() => {
+    setShowFolderDialog(false)
+    setPendingCopyData(null)
+  }, [])
 
   const handleDeleteFiles = useCallback(async () => {
     if (selectedFiles.length === 0) return
@@ -187,6 +248,14 @@ function App() {
 
       {/* Status Bar */}
       <StatusBar />
+
+      {/* Folder Name Dialog */}
+      <FolderNameDialog
+        open={showFolderDialog}
+        defaultName={pendingCopyData?.suggestedName || 'copied_files'}
+        onConfirm={handleFolderNameConfirm}
+        onCancel={handleFolderNameCancel}
+      />
     </div>
   )
 }
