@@ -13,7 +13,7 @@ A high-performance document indexing and search system designed based on technic
 - **DOC**: antiword 包装器 | antiword wrapper
 - **XLS**: xlrd 行业标准 | xlrd industry standard
 - **CSV**: pandas 高度优化 | pandas highly optimized
-- **TXT/MD**: 原生文件I/O | Native file I/O
+- **文本文件**: 支持250+格式 (代码/配置/文档) | Text Files: 250+ formats (code/config/docs)
 
 ### 🔍 混合式搜索系统 | Hybrid Search System
 - **FTS5全文检索**: 毫秒级响应的SQLite FTS5 | FTS5 Full-text Search: Millisecond response SQLite FTS5

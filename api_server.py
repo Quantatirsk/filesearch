@@ -38,6 +38,7 @@ class SearchRequest(BaseModel):
     search_type: str = Field("hybrid", description="Search type: exact, fuzzy, path, hybrid")
     limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
     min_fuzzy_score: float = Field(30.0, ge=0.0, le=100.0, description="Minimum fuzzy similarity score")
+    file_types: Optional[List[str]] = Field(None, description="File types to include in search")
 
 class SearchResponse(BaseModel):
     success: bool
@@ -102,6 +103,11 @@ UPLOAD_TEMP_DIR = "temp_uploads"
 
 def get_search_manager(db_path: str = DEFAULT_DB_PATH) -> SearchManager:
     """Get search manager instance"""
+    print(f"🔍 DEBUG: get_search_manager called with db_path={db_path}")
+    print(f"🔍 DEBUG: Absolute db_path={os.path.abspath(db_path)}")
+    print(f"🔍 DEBUG: Database file exists: {os.path.exists(db_path)}")
+    if os.path.exists(db_path):
+        print(f"🔍 DEBUG: Database file size: {os.path.getsize(db_path)} bytes")
     return SearchManager(db_path)
 
 
@@ -242,17 +248,27 @@ async def search_documents(
     - **hybrid**: Combined search using all methods with deduplication
     """
     try:
+        print(f"🔍 DEBUG: Search endpoint called:")
+        print(f"🔍 DEBUG: - query={request.query}")
+        print(f"🔍 DEBUG: - search_type={request.search_type}")
+        print(f"🔍 DEBUG: - file_types={request.file_types}")
+        print(f"🔍 DEBUG: - db_path={db_path}")
+        
         search_manager = get_search_manager(db_path)
         result = search_manager.search(
             query=request.query,
             search_type=request.search_type,
             limit=request.limit,
-            min_fuzzy_score=request.min_fuzzy_score
+            min_fuzzy_score=request.min_fuzzy_score,
+            file_types=request.file_types
         )
+        
+        print(f"🔍 DEBUG: Search result - total_results={result.get('total_results', 0)}")
         
         return SearchResponse(**result)
     
     except Exception as e:
+        print(f"❌ DEBUG: Search error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -446,24 +462,147 @@ async def clear_index(
 @app.get("/supported-formats")
 async def get_supported_formats():
     """
-    Get list of supported file formats
+    Get comprehensive list of supported file formats with categorization
     """
     try:
         parser_factory = ParserFactory()
         supported_formats = list(parser_factory._parsers.keys())
         
+        # Categorize formats for better UI organization
+        format_categories = {
+            "documents": {
+                "name": "Document Files",
+                "description": "Office documents and PDFs",
+                "formats": [".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".rtf"],
+                "icon": "FileText"
+            },
+            "programming": {
+                "name": "Programming Languages",
+                "description": "Source code files",
+                "formats": [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp", 
+                           ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".scala", ".pl", ".lua", 
+                           ".r", ".m", ".asm", ".sql", ".vbs", ".ps1", ".hs", ".ml", ".clj", ".ex", ".elm"],
+                "icon": "Code"
+            },
+            "web": {
+                "name": "Web Technologies",
+                "description": "Web development files",
+                "formats": [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", 
+                           ".xml", ".svg", ".jsp", ".asp", ".ejs", ".erb", ".mustache", ".twig"],
+                "icon": "Globe"
+            },
+            "config": {
+                "name": "Configuration Files",
+                "description": "Configuration and data files",
+                "formats": [".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env", 
+                           ".properties", ".dockerfile", ".makefile", ".gitignore", ".editorconfig"],
+                "icon": "Settings"
+            },
+            "shell": {
+                "name": "Shell Scripts",
+                "description": "Command line scripts",
+                "formats": [".sh", ".bash", ".zsh", ".fish", ".bat", ".cmd", ".ps1"],
+                "icon": "Terminal"
+            },
+            "docs": {
+                "name": "Documentation",
+                "description": "Documentation and markup files",
+                "formats": [".md", ".rst", ".tex", ".org", ".asciidoc", ".wiki", ".txt"],
+                "icon": "BookOpen"
+            },
+            "build": {
+                "name": "Build & Deploy",
+                "description": "Build and deployment files",
+                "formats": [".makefile", ".cmake", ".gradle", ".maven", ".sbt", ".dockerfile", 
+                           ".terraform", ".k8s", ".ansible", ".vagrant"],
+                "icon": "Package"
+            }
+        }
+        
+        # Filter categories to only include formats that are actually supported
+        filtered_categories = {}
+        for category_key, category_data in format_categories.items():
+            supported_in_category = [fmt for fmt in category_data["formats"] if fmt in supported_formats]
+            if supported_in_category:
+                filtered_categories[category_key] = {
+                    **category_data,
+                    "formats": supported_in_category,
+                    "count": len(supported_in_category)
+                }
+        
+        # Get format descriptions
+        format_descriptions = {
+            # Documents
+            ".pdf": "Portable Document Format",
+            ".docx": "Microsoft Word 2007+",
+            ".doc": "Microsoft Word 97-2003",
+            ".xlsx": "Microsoft Excel 2007+",
+            ".xls": "Microsoft Excel 97-2003",
+            ".csv": "Comma Separated Values",
+            ".rtf": "Rich Text Format",
+            
+            # Programming Languages
+            ".py": "Python",
+            ".js": "JavaScript",
+            ".ts": "TypeScript",
+            ".jsx": "JavaScript JSX",
+            ".tsx": "TypeScript JSX",
+            ".java": "Java",
+            ".c": "C",
+            ".cpp": "C++",
+            ".cs": "C#",
+            ".php": "PHP",
+            ".rb": "Ruby",
+            ".go": "Go",
+            ".rs": "Rust",
+            ".swift": "Swift",
+            ".kt": "Kotlin",
+            ".scala": "Scala",
+            ".pl": "Perl",
+            ".lua": "Lua",
+            ".r": "R",
+            ".sql": "SQL",
+            ".hs": "Haskell",
+            ".ml": "OCaml",
+            
+            # Web Technologies
+            ".html": "HTML",
+            ".css": "CSS",
+            ".scss": "SCSS",
+            ".vue": "Vue.js",
+            ".xml": "XML",
+            ".svg": "SVG",
+            
+            # Configuration
+            ".json": "JSON",
+            ".yaml": "YAML",
+            ".toml": "TOML",
+            ".ini": "INI Config",
+            ".env": "Environment Variables",
+            
+            # Documentation
+            ".md": "Markdown",
+            ".rst": "reStructuredText",
+            ".tex": "LaTeX",
+            ".txt": "Plain Text",
+            
+            # Shell Scripts
+            ".sh": "Shell Script",
+            ".bash": "Bash Script",
+            ".bat": "Batch File",
+            ".ps1": "PowerShell"
+        }
+        
         return {
+            "success": True,
             "supported_formats": supported_formats,
-            "count": len(supported_formats),
-            "format_details": {
-                "pdf": "Portable Document Format",
-                "docx": "Microsoft Word 2007+",
-                "doc": "Microsoft Word 97-2003",
-                "xlsx": "Microsoft Excel 2007+",
-                "xls": "Microsoft Excel 97-2003",
-                "csv": "Comma Separated Values",
-                "txt": "Plain Text",
-                "md": "Markdown"
+            "total_count": len(supported_formats),
+            "categories": filtered_categories,
+            "format_descriptions": format_descriptions,
+            "stats": {
+                "total_formats": len(supported_formats),
+                "categories_count": len(filtered_categories),
+                "text_formats": len([f for f in supported_formats if f not in [".pdf", ".docx", ".doc", ".xlsx", ".xls"]])
             }
         }
     

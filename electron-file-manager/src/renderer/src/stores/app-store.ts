@@ -36,10 +36,12 @@ export const useAppStore = create<AppStore>()(
       
       setCurrentDirectory: (directory) => set({ currentDirectory: directory }),
       
-      setSearchResults: (results) => set((state) => ({ 
-        searchResults: results,
-        selectedFiles: [] // Clear selection when new results come in
-      }), false, 'setSearchResults'),
+      setSearchResults: (results) => {
+        set((state) => ({ 
+          searchResults: results,
+          selectedFiles: [] // Clear selection when new results come in
+        }), false, 'setSearchResults')
+      },
       
       setSelectedFiles: (files) => set({ selectedFiles: files }),
       
@@ -61,7 +63,6 @@ export const useAppStore = create<AppStore>()(
       setSearching: (searching) => set({ isSearching: searching }),
       
       setSearchQuery: (query) => {
-        console.log('DEBUG: setSearchQuery called with:', query)
         set({ searchQuery: query })
       },
       

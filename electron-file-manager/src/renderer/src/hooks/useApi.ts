@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { SearchOptions, AdvancedSearchOptions, IndexOptions, SearchResult, IndexResult, DatabaseStats } from '../types'
+import { SearchOptions, AdvancedSearchOptions, IndexOptions, SearchResult, IndexResult, DatabaseStats, SupportedFormatsResponse } from '../types'
 
 export const useApi = () => {
   const makeRequest = useCallback(async (options: any) => {
@@ -50,7 +50,7 @@ export const useApi = () => {
     })
   }, [makeRequest])
 
-  const getSupportedFormats = useCallback(async (): Promise<string[]> => {
+  const getSupportedFormats = useCallback(async (): Promise<SupportedFormatsResponse> => {
     return await makeRequest({
       method: 'GET',
       url: '/supported-formats'

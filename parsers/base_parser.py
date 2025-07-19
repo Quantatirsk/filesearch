@@ -92,6 +92,13 @@ class ParserFactory:
         if parser_class:
             return parser_class()
         
+        # If no parser found by extension, check if any parser supports this file
+        # (for files without extensions like Dockerfile, Makefile, etc.)
+        for parser_class in set(cls._parsers.values()):
+            parser_instance = parser_class()
+            if parser_instance.is_supported(file_path):
+                return parser_instance
+        
         return None
     
     @classmethod
@@ -116,37 +123,21 @@ class ParserFactory:
             True if the file is supported, False otherwise
         """
         file_ext = Path(file_path).suffix.lower()
-        return file_ext in cls._parsers
-
-
-class PlainTextParser(BaseParser):
-    """
-    Parser for plain text files (.txt, .md).
-    
-    Uses standard Python file I/O for maximum efficiency as recommended
-    in the technical report.
-    """
-    
-    def parse(self, file_path: str) -> Optional[str]:
-        """
-        Parse a plain text file.
         
-        Args:
-            file_path: Path to the text file
-            
-        Returns:
-            File content as string or None if parsing fails
-        """
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read()
-        except Exception as e:
-            print(f"Error parsing text file {file_path}: {e}")
-            return None
-    
-    def get_supported_extensions(self) -> list:
-        """Get supported file extensions."""
-        return ['.txt', '.md']
+        # Check by extension first
+        if file_ext in cls._parsers:
+            return True
+        
+        # If no extension match, check if any parser supports this file
+        for parser_class in set(cls._parsers.values()):
+            parser_instance = parser_class()
+            if parser_instance.is_supported(file_path):
+                return True
+                
+        return False
+
+
+# PlainTextParser moved to text_parser.py for extended functionality
 
 
 class CSVParser(BaseParser):
@@ -186,5 +177,4 @@ class CSVParser(BaseParser):
 
 
 # Register the basic parsers
-ParserFactory.register_parser(PlainTextParser)
 ParserFactory.register_parser(CSVParser)

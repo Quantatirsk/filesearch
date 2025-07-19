@@ -53,16 +53,6 @@ python api_server.py --reload
 # http://localhost:8001/redoc (ReDoc)
 ```
 
-### Web Interface
-```bash
-# Start Streamlit web app
-./run_streamlit.sh
-
-# Or start directly
-streamlit run streamlit_app.py --server.port 8501
-
-# Access at: http://localhost:8501
-```
 
 ### Testing
 ```bash
@@ -110,13 +100,14 @@ python tests/performance_test.py
 - **DOC**: antiword system integration
 - **XLS**: xlrd industry standard
 - **CSV**: pandas optimized processing
+- **Text Files**: Enhanced multi-encoding support for 250+ file types
 - **Fuzzy Search**: RapidFuzz C++ implementation
 
 ### Multi-Interface Architecture
 
 - **CLI**: Full-featured command-line interface (`main.py`)
-- **Web UI**: Streamlit-based user interface (`streamlit_app.py`)
 - **REST API**: FastAPI server with OpenAPI documentation (`api_server.py`)
+- **Desktop App**: Electron-based file manager with search capabilities
 
 ## Key Technical Details
 
@@ -146,8 +137,16 @@ FORMATS = {
     '.xlsx': 'calamine',    # Rust-based Excel parsing
     '.xls': 'xlrd',         # Legacy Excel support
     '.csv': 'pandas',       # Optimized CSV processing
-    '.txt': 'native',       # Direct file I/O
-    '.md': 'native'         # Markdown support
+    
+    # Comprehensive text-based file support (250+ extensions)
+    'text_files': {
+        'programming': ['py', 'js', 'java', 'cpp', 'c', 'h', 'go', 'rs', 'php', 'rb', 'swift', 'kt', 'dart', 'etc.'],
+        'config': ['json', 'yaml', 'toml', 'ini', 'xml', 'env', 'conf', 'properties', 'etc.'],
+        'web': ['html', 'css', 'scss', 'vue', 'jsx', 'tsx', 'svg', 'etc.'],
+        'shell': ['sh', 'bash', 'zsh', 'fish', 'bat', 'ps1', 'etc.'],
+        'docs': ['md', 'rst', 'tex', 'org', 'asciidoc', 'etc.'],
+        'build': ['makefile', 'cmake', 'gradle', 'dockerfile', 'etc.']
+    }
 }
 ```
 
@@ -161,6 +160,7 @@ filesearch/
 │   └── search_manager.py   # Unified search interface
 ├── parsers/                # File format parsers
 │   ├── base_parser.py      # Parser factory and base class
+│   ├── text_parser.py      # Enhanced text parser (250+ extensions)
 │   ├── pdf_parser.py       # PyMuPDF PDF parsing
 │   ├── docx_parser.py      # lxml DOCX parsing
 │   ├── xlsx_parser.py      # Calamine XLSX parsing
@@ -171,9 +171,8 @@ filesearch/
 ├── tests/                  # Unit and performance tests
 ├── main.py                 # CLI entry point
 ├── api_server.py           # FastAPI REST API server
-├── streamlit_app.py        # Streamlit web interface
 ├── run_api.sh              # API server startup script
-└── run_streamlit.sh        # Web interface startup script
+└── electron-file-manager/  # Desktop application
 ```
 
 ## Development Workflow
