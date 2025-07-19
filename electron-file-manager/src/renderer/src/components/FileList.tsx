@@ -39,7 +39,8 @@ import {
   MoreHorizontal, 
   Copy, 
   Edit, 
-  Trash2 
+  Trash2,
+  Brain
 } from 'lucide-react'
 
 interface FileListProps {
@@ -48,7 +49,7 @@ interface FileListProps {
 
 export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) => {
   // API hooks
-  const { removeFileFromIndex, updateFilePath } = useApi()
+  const { removeFileFromIndex, updateFilePath, summarizeFileContent } = useApi()
   
   // 精确选择需要的状态，避免不必要的重新渲染
   const searchResults = useAppStore(state => state.searchResults)
@@ -67,6 +68,12 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
   const [isRenameOpen, setIsRenameOpen] = useState(false)
   const [newFileName, setNewFileName] = useState('')
+  
+  // Summary dialog state
+  const [summaryFilePath, setSummaryFilePath] = useState<string | null>(null)
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false)
+  const [summaryContent, setSummaryContent] = useState('')
+  const [isSummarizing, setIsSummarizing] = useState(false)
 
   const handleCheckboxChange = useCallback((filePath: string, checked: boolean) => {
     if (checked) {
@@ -141,6 +148,32 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   const handleClosePreview = useCallback(() => {
     setIsPreviewOpen(false)
     setPreviewFilePath(null)
+  }, [])
+
+  const handleSummarizeFile = useCallback(async (filePath: string) => {
+    console.log('Summarizing file:', filePath)
+    setSummaryFilePath(filePath)
+    setIsSummaryOpen(true)
+    setIsSummarizing(true)
+    setSummaryContent('')
+    
+    try {
+      const summary = await summarizeFileContent(filePath)
+      setSummaryContent(summary)
+    } catch (error) {
+      console.error('Failed to summarize file:', error)
+      setSummaryContent(`生成摘要失败: ${error}`)
+      toast.error(`文件摘要生成失败: ${error}`)
+    } finally {
+      setIsSummarizing(false)
+    }
+  }, [summarizeFileContent])
+
+  const handleCloseSummary = useCallback(() => {
+    setIsSummaryOpen(false)
+    setSummaryFilePath(null)
+    setSummaryContent('')
+    setIsSummarizing(false)
   }, [])
 
   // 文件操作处理函数
@@ -323,6 +356,17 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
         title="预览文件内容"
       >
         <Eye className="h-4 w-4" />
+      </Button>
+
+      {/* AI解读按钮 */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={() => handleSummarizeFile(file.file_path)}
+        title="AI解读文件内容"
+      >
+        <Brain className="h-4 w-4" />
       </Button>
 
       {/* 打开文件按钮 */}
@@ -549,6 +593,58 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <Button onClick={handleConfirmRename} disabled={!newFileName.trim()}>
               确认
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Summary Dialog */}
+      <Dialog open={isSummaryOpen} onOpenChange={setIsSummaryOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI文件解读
+            </DialogTitle>
+            <DialogDescription>
+              {summaryFilePath && (
+                <span className="text-sm text-muted-foreground">
+                  文件：{summaryFilePath.split('/').pop()}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 max-h-96 overflow-y-auto">
+            {isSummarizing ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  <span className="text-muted-foreground">AI正在分析文件内容...</span>
+                </div>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none">
+                <div className="whitespace-pre-wrap text-sm">
+                  {summaryContent || '暂无摘要内容'}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={handleCloseSummary}
+              disabled={isSummarizing}
+            >
+              关闭
+            </Button>
+            {!isSummarizing && summaryFilePath && (
+              <Button 
+                onClick={() => handleSummarizeFile(summaryFilePath)}
+                disabled={isSummarizing}
+              >
+                重新生成
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

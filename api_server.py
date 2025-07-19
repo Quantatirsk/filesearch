@@ -17,10 +17,16 @@ import tempfile
 import shutil
 
 from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Body
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+import openai
+import os
+from dotenv import load_dotenv
+import json
+import asyncio
+import time
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -104,6 +110,32 @@ class UpdateFilePathResponse(BaseModel):
     new_path: str
     error: Optional[str] = None
 
+# LLM Chat Completions Models
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Message role: system, user, assistant")
+    content: str = Field(..., description="Message content")
+
+class ChatCompletionRequest(BaseModel):
+    model: str = Field(default="gpt-3.5-turbo", description="Model name")
+    messages: List[ChatMessage] = Field(..., description="List of messages")
+    stream: bool = Field(default=False, description="Whether to stream the response")
+    max_tokens: Optional[int] = Field(default=None, description="Maximum number of tokens")
+    temperature: float = Field(default=0.7, description="Sampling temperature")
+
+class ChatCompletionChoice(BaseModel):
+    index: int
+    message: Optional[ChatMessage] = None
+    delta: Optional[Dict[str, Any]] = None
+    finish_reason: Optional[str] = None
+
+class ChatCompletionResponse(BaseModel):
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: List[ChatCompletionChoice]
+    usage: Optional[Dict[str, int]] = None
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -126,6 +158,27 @@ app.add_middleware(
 # Global configuration
 DEFAULT_DB_PATH = "documents.db"
 UPLOAD_TEMP_DIR = "temp_uploads"
+
+# Load environment variables
+load_dotenv()
+
+# Initialize OpenAI client
+openai_client = None
+try:
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    
+    if openai_api_key:
+        openai_client = openai.OpenAI(
+            api_key=openai_api_key,
+            base_url=openai_base_url
+        )
+        print(f"✅ OpenAI client initialized with base URL: {openai_base_url}")
+    else:
+        print("⚠️  OpenAI API key not found in environment variables")
+except Exception as e:
+    print(f"❌ Failed to initialize OpenAI client: {e}")
+    openai_client = None
 
 
 def get_search_manager(db_path: str = DEFAULT_DB_PATH) -> SearchManager:
@@ -724,6 +777,101 @@ async def update_file_path(
             new_path=request.new_path,
             error=str(e)
         )
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatCompletionRequest):
+    """
+    OpenAI-compatible chat completions endpoint
+    
+    Supports both streaming and non-streaming responses.
+    All prompts should be packaged in the frontend and call this unified endpoint.
+    """
+    if not openai_client:
+        raise HTTPException(
+            status_code=503, 
+            detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables."
+        )
+    
+    try:
+        # Convert Pydantic models to OpenAI format
+        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        
+        # Call OpenAI API
+        completion = openai_client.chat.completions.create(
+            model=request.model,
+            messages=messages,
+            stream=request.stream,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature
+        )
+        
+        if request.stream:
+            # Stream response
+            async def generate_stream():
+                try:
+                    for chunk in completion:
+                        if chunk.choices:
+                            choice = chunk.choices[0]
+                            # Format as OpenAI streaming response
+                            stream_data = {
+                                "id": chunk.id,
+                                "object": "chat.completion.chunk",
+                                "created": chunk.created,
+                                "model": chunk.model,
+                                "choices": [{
+                                    "index": choice.index,
+                                    "delta": {
+                                        "content": choice.delta.content if choice.delta and choice.delta.content else ""
+                                    },
+                                    "finish_reason": choice.finish_reason
+                                }]
+                            }
+                            yield f"data: {json.dumps(stream_data)}\n\n"
+                    yield "data: [DONE]\n\n"
+                except Exception as e:
+                    error_data = {
+                        "error": {
+                            "message": str(e),
+                            "type": "stream_error"
+                        }
+                    }
+                    yield f"data: {json.dumps(error_data)}\n\n"
+            
+            return StreamingResponse(
+                generate_stream(),
+                media_type="text/plain",
+                headers={"Cache-Control": "no-cache"}
+            )
+        else:
+            # Non-streaming response
+            response_data = ChatCompletionResponse(
+                id=completion.id,
+                object="chat.completion",
+                created=completion.created,
+                model=completion.model,
+                choices=[
+                    ChatCompletionChoice(
+                        index=choice.index,
+                        message=ChatMessage(
+                            role=choice.message.role,
+                            content=choice.message.content or ""
+                        ),
+                        finish_reason=choice.finish_reason
+                    ) for choice in completion.choices
+                ],
+                usage={
+                    "prompt_tokens": completion.usage.prompt_tokens if completion.usage else 0,
+                    "completion_tokens": completion.usage.completion_tokens if completion.usage else 0,
+                    "total_tokens": completion.usage.total_tokens if completion.usage else 0
+                } if completion.usage else None
+            )
+            
+            return response_data
+    
+    except Exception as e:
+        print(f"❌ Chat completion error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chat completion failed: {str(e)}")
 
 
 if __name__ == "__main__":

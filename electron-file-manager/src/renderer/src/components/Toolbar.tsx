@@ -5,7 +5,8 @@ import {
   Copy, 
   Trash2, 
   Settings,
-  CheckSquare
+  CheckSquare,
+  MessageCircle
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -17,12 +18,14 @@ interface ToolbarProps {
   onSelectDirectory: () => void
   onCopyFiles: () => void
   onDeleteFiles: () => void
+  onOpenChatAssistant: () => void
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectDirectory,
   onCopyFiles,
-  onDeleteFiles
+  onDeleteFiles,
+  onOpenChatAssistant
 }) => {
   const { 
     isBackendRunning, 
@@ -126,6 +129,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       <div className="flex items-center space-x-1.5">
+        {/* Smart Assistant */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenChatAssistant}
+          disabled={!isBackendRunning}
+          className="h-7 px-2 text-xs"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          智能助手
+        </Button>
+
         {/* Settings */}
         <SettingsDialog>
           <Button variant="outline" size="sm" className="h-7 px-2">

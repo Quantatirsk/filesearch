@@ -5,6 +5,7 @@ import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { FolderNameDialog } from './components/FolderNameDialog'
+import { ChatAssistant } from './components/ChatAssistant'
 import { Toaster } from './components/ui/sonner'
 import { toast } from 'sonner'
 import { useAppStore } from './stores/app-store'
@@ -18,6 +19,10 @@ function App() {
     baseDirectory: string
     suggestedName: string
   } | null>(null)
+  
+  // Chat Assistant state
+  const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false)
+  const [isChatAssistantMinimized, setIsChatAssistantMinimized] = useState(false)
   
   const { 
     selectedFiles, 
@@ -232,6 +237,21 @@ function App() {
     console.log('Search performed:', { query, type })
   }, [])
 
+  // Chat Assistant handlers
+  const handleOpenChatAssistant = useCallback(() => {
+    setIsChatAssistantOpen(true)
+    setIsChatAssistantMinimized(false)
+  }, [])
+
+  const handleCloseChatAssistant = useCallback(() => {
+    setIsChatAssistantOpen(false)
+    setIsChatAssistantMinimized(false)
+  }, [])
+
+  const handleToggleMinimizeChatAssistant = useCallback(() => {
+    setIsChatAssistantMinimized(prev => !prev)
+  }, [])
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Toolbar */}
@@ -239,6 +259,7 @@ function App() {
         onSelectDirectory={handleSelectDirectory}
         onCopyFiles={handleCopyFiles}
         onDeleteFiles={handleDeleteFiles}
+        onOpenChatAssistant={handleOpenChatAssistant}
       />
 
       {/* Search Bar */}
@@ -266,6 +287,14 @@ function App() {
         defaultName={pendingCopyData?.suggestedName || 'copied_files'}
         onConfirm={handleFolderNameConfirm}
         onCancel={handleFolderNameCancel}
+      />
+
+      {/* Chat Assistant */}
+      <ChatAssistant
+        isOpen={isChatAssistantOpen}
+        onClose={handleCloseChatAssistant}
+        onToggleMinimize={handleToggleMinimizeChatAssistant}
+        isMinimized={isChatAssistantMinimized}
       />
 
       {/* Toast Notifications */}
