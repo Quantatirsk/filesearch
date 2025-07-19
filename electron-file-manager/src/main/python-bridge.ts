@@ -18,7 +18,10 @@ export class PythonBridge {
       // Path to the Python backend (go up to filesearch directory)
       const pythonBackendPath = join(__dirname, '../../..')
       
-      console.log('Starting Python backend from:', pythonBackendPath)
+      console.log('🔍 DEBUG: Starting Python backend from:', pythonBackendPath)
+      console.log('🔍 DEBUG: Full command: python api_server.py --host', this.host, '--port', this.port.toString())
+      console.log('🔍 DEBUG: Working directory:', pythonBackendPath)
+      console.log('🔍 DEBUG: Default database path will be:', join(pythonBackendPath, 'documents.db'))
       
       // Start the Python API server
       this.pythonProcess = spawn('python', ['api_server.py', '--host', this.host, '--port', this.port.toString()], {

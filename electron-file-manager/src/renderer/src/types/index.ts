@@ -26,6 +26,7 @@ export interface SearchOptions {
   search_type: 'exact' | 'fuzzy' | 'path' | 'hybrid'
   limit: number
   min_fuzzy_score: number
+  file_types?: string[]
 }
 
 export interface AdvancedSearchOptions {
@@ -93,4 +94,25 @@ export interface ToastMessage {
   description?: string
   type: 'success' | 'error' | 'info' | 'warning'
   duration?: number
+}
+
+export interface FormatCategory {
+  name: string
+  description: string
+  formats: string[]
+  icon: string
+  count: number
+}
+
+export interface SupportedFormatsResponse {
+  success: boolean
+  supported_formats: string[]
+  total_count: number
+  categories: { [key: string]: FormatCategory }
+  format_descriptions: { [key: string]: string }
+  stats: {
+    total_formats: number
+    categories_count: number
+    text_formats: number
+  }
 }

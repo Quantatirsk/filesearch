@@ -58,7 +58,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const isAllSelected = searchResults.length > 0 && selectedFiles.length === searchResults.length
 
-
   return (
     <div className="toolbar flex items-center justify-between px-3 py-1.5 bg-card border-b border-border">
       <div className="flex items-center space-x-1.5">

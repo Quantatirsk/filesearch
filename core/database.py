@@ -218,13 +218,14 @@ class DocumentDatabase:
         
         return success_count
     
-    def search_exact(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def search_exact(self, query: str, limit: int = 100, file_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Perform exact/boolean search using LIKE for multiple keywords.
         
         Args:
             query: Search query string (supports multiple keywords separated by space)
             limit: Maximum number of results
+            file_types: Optional list of file extensions to filter results
             
         Returns:
             List of search results with metadata
@@ -245,22 +246,30 @@ class DocumentDatabase:
             where_conditions.append("docs_fts.content LIKE ?")
             params.append(f'%{keyword}%')
         
+        # Add file type filtering if specified
+        if file_types:
+            # Normalize extensions (remove leading dots to match database format)
+            normalized_types = [ft.lstrip('.') for ft in file_types]
+            placeholders = ','.join(['?' for _ in normalized_types])
+            where_conditions.append(f"m.file_type IN ({placeholders})")
+            params.extend(normalized_types)
+        
         where_clause = " AND ".join(where_conditions)
         params.append(limit)
         
-        cursor.execute(f"""
+        sql_query = f"""
             SELECT 
                 m.file_path,
                 m.file_type,
                 m.file_size,
                 m.last_indexed,
-                m.file_hash,
-                docs_fts.content as highlighted_content
+                m.file_hash
             FROM docs_fts
             JOIN docs_meta m ON docs_fts.doc_id = m.doc_id
             WHERE {where_clause}
-            LIMIT ?
-        """, params)
+            LIMIT ?"""
+        
+        cursor.execute(sql_query, params)
         
         results = []
         for row in cursor.fetchall():
@@ -269,19 +278,19 @@ class DocumentDatabase:
                 'file_type': row['file_type'],
                 'file_size': row['file_size'],
                 'last_modified': row['last_indexed'],  # 兼容性
-                'file_hash': row['file_hash'],
-                'content': row['highlighted_content']  # 兼容性
+                'file_hash': row['file_hash']
             })
         
         return results
     
-    def search_fts5(self, query: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def search_fts5(self, query: str, limit: int = 100, file_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Perform FTS5 full-text search for fuzzy search candidates.
         
         Args:
             query: FTS5 query string (formatted for FTS5 syntax)
             limit: Maximum number of results
+            file_types: Optional list of file extensions to filter results
             
         Returns:
             List of search results with metadata
@@ -289,20 +298,33 @@ class DocumentDatabase:
         cursor = self.conn.cursor()
         
         try:
-            cursor.execute("""
+            # Build the SQL query with optional file type filtering
+            params = [query]
+            where_conditions = ["docs_fts MATCH ?"]
+            
+            if file_types:
+                # Normalize extensions (remove leading dots to match database format)
+                normalized_types = [ft.lstrip('.') for ft in file_types]
+                placeholders = ','.join(['?' for _ in normalized_types])
+                where_conditions.append(f"m.file_type IN ({placeholders})")
+                params.extend(normalized_types)
+            
+            where_clause = " AND ".join(where_conditions)
+            params.append(limit)
+            
+            cursor.execute(f"""
                 SELECT 
                     m.file_path,
                     m.file_type,
                     m.file_size,
                     m.last_indexed,
-                    m.file_hash,
-                    docs_fts.content as highlighted_content
+                    m.file_hash
                 FROM docs_fts
                 JOIN docs_meta m ON docs_fts.doc_id = m.doc_id
-                WHERE docs_fts MATCH ?
+                WHERE {where_clause}
                 ORDER BY rank
                 LIMIT ?
-            """, (query, limit))
+            """, params)
             
             results = []
             for row in cursor.fetchall():
@@ -311,8 +333,7 @@ class DocumentDatabase:
                     'file_type': row['file_type'],
                     'file_size': row['file_size'],
                     'last_modified': row['last_indexed'],  # 兼容性
-                    'file_hash': row['file_hash'],
-                    'content': row['highlighted_content']  # 兼容性
+                    'file_hash': row['file_hash']
                 })
             
             return results
@@ -322,13 +343,14 @@ class DocumentDatabase:
             # Fallback to LIKE search if FTS5 fails
             return self.search_exact(query, limit)
     
-    def search_path(self, path_query: str, limit: int = 100) -> List[Dict[str, Any]]:
+    def search_path(self, path_query: str, limit: int = 100, file_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Search documents by file path.
         
         Args:
             path_query: Path search pattern (supports multiple keywords separated by space)
             limit: Maximum number of results
+            file_types: Optional list of file extensions to filter results
             
         Returns:
             List of matching documents
@@ -348,6 +370,14 @@ class DocumentDatabase:
         for keyword in keywords:
             where_conditions.append("file_path LIKE ?")
             params.append(f'%{keyword}%')
+        
+        # Add file type filtering if specified
+        if file_types:
+            # Normalize extensions (remove leading dots to match database format)
+            normalized_types = [ft.lstrip('.') for ft in file_types]
+            placeholders = ','.join(['?' for _ in normalized_types])
+            where_conditions.append(f"file_type IN ({placeholders})")
+            params.extend(normalized_types)
         
         where_clause = " AND ".join(where_conditions)
         params.append(limit)

@@ -21,8 +21,7 @@ rapidfuzz>=3.0.0
 # DOC file parsing (doc2txt library)
 doc2txt
 
-# Web interface dependencies
-streamlit>=1.28.0
+# System monitoring (kept for general use)
 psutil>=5.9.0
 
 # FastAPI REST API service

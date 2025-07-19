@@ -1,10 +1,12 @@
 import { useCallback, useRef } from 'react'
 import { useApi } from './useApi'
+import { useSettings } from './useSettings'
 import { useAppStore } from '../stores/app-store'
 import { debounce, parseMultiKeywords } from '../lib/utils'
 
 export const useSearch = () => {
   const { search } = useApi()
+  const { settings } = useSettings()
   const setSearchResults = useAppStore(state => state.setSearchResults)
   const setSearching = useAppStore(state => state.setSearching)
   const setSearchQuery = useAppStore(state => state.setSearchQuery)
@@ -27,7 +29,6 @@ export const useSearch = () => {
     }
 
     // 更新搜索查询字符串
-    console.log('DEBUG: useSearch setting searchQuery to:', query)
     setSearchQuery(query)
     setSearching(true)
     
@@ -36,16 +37,21 @@ export const useSearch = () => {
       const keywords = parseMultiKeywords(query)
       const searchQuery = keywords.join(' ')
       
+      const fileTypesToSend = settings.enabledFormats && settings.enabledFormats.length > 0 ? settings.enabledFormats : undefined
+      
       const result = await search({
         query: searchQuery,
         search_type: type as 'exact' | 'fuzzy' | 'path' | 'hybrid',
         limit: 1000,
-        min_fuzzy_score: 30.0
+        min_fuzzy_score: 30.0,
+        file_types: fileTypesToSend
       })
+
 
       if (result.success) {
         // 转换后端数据格式为前端FileItem格式
         const convertedResults = result.results.map((item: any) => {
+          
           // 处理时间戳
           let lastModified = new Date().toISOString()
           if (item.last_modified) {
@@ -61,19 +67,19 @@ export const useSearch = () => {
             lastModified = item.last_indexed
           }
           
-          return {
+          const converted = {
             id: item.file_path || item.id || Math.random().toString(36),
             file_path: item.file_path,
             file_name: item.file_name || item.file_path?.split('/').pop() || item.file_path?.split('\\').pop() || 'Unknown',
             file_size: item.file_size || 0,
             file_type: item.file_type || 'unknown',
             last_modified: lastModified,
-            content_preview: item.highlighted_content || item.content_preview || item.fuzzy_highlight || '',
+            content_preview: '',
             match_score: item.match_score || item.fuzzy_score || 100
           }
+          
+          return converted
         })
-        
-        console.log('Converted search results:', convertedResults)
         
         // 直接更新搜索结果，避免延迟影响用户交互
         setSearchResults(convertedResults)
@@ -87,7 +93,7 @@ export const useSearch = () => {
     } finally {
       setSearching(false)
     }
-  }, [search, setSearchResults, setSearching, setSearchQuery, isBackendRunning])
+  }, [search, setSearchResults, setSearching, setSearchQuery, isBackendRunning, settings.enabledFormats])
 
   // Create stable debounced function using useRef
   const debouncedSearchRef = useRef<((query: string, type: string) => void) | null>(null)
