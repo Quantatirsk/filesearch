@@ -23,8 +23,20 @@ import {
   Palette,
   Globe,
   Zap,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Code,
+  Terminal,
+  BookOpen,
+  Package,
+  CheckCircle,
+  Circle,
+  Eye,
+  EyeOff
 } from 'lucide-react'
+
+import { useApi } from '../hooks/useApi'
+import { useSettings } from '../hooks/useSettings'
+import { SupportedFormatsResponse, FormatCategory } from '../types'
 
 interface SettingsData {
   // 搜索设置
@@ -42,9 +54,9 @@ interface SettingsData {
   showLastModified: boolean
   showContentPreview: boolean
   
-  // 文件类型过滤
-  supportedFileTypes: string[]
-  enabledFileTypes: string[]
+  // 文件类型过滤 - 改进版
+  enabledCategories: string[]
+  enabledFormats: string[]
   
   // 后端设置
   serverPort: number
@@ -71,8 +83,8 @@ const DEFAULT_SETTINGS: SettingsData = {
   showLastModified: true,
   showContentPreview: true,
   
-  supportedFileTypes: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'csv', 'txt', 'md'],
-  enabledFileTypes: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'csv', 'txt', 'md'],
+  enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
+  enabledFormats: [],
   
   serverPort: 8001,
   workerCount: 8,
@@ -92,29 +104,60 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   children, 
   onSettingsChange 
 }) => {
-  const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
+  const { settings, saveSettings, loadSettings } = useSettings()
+  const [localSettings, setLocalSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const [isOpen, setIsOpen] = useState(false)
+  const [formatsData, setFormatsData] = useState<SupportedFormatsResponse | null>(null)
+  const [loading, setLoading] = useState(false)
+  const { getSupportedFormats } = useApi()
 
-  // 加载设置
+  // 同步设置数据
   useEffect(() => {
-    const loadSettings = async () => {
+    if (isOpen) {
+      setLocalSettings({ ...DEFAULT_SETTINGS, ...settings })
+    }
+  }, [isOpen, settings])
+
+  // 加载格式数据
+  useEffect(() => {
+    const loadFormats = async () => {
+      if (!isOpen) return
+      
+      setLoading(true)
       try {
-        const savedSettings = await window.electronAPI?.settings?.load()
-        if (savedSettings) {
-          setSettings({ ...DEFAULT_SETTINGS, ...savedSettings })
+        const formats = await getSupportedFormats()
+        setFormatsData(formats)
+        
+        // 如果是第一次加载，设置默认启用的格式
+        if (!settings?.enabledFormats?.length && formats.success) {
+          const defaultFormats = [
+            ...formats.categories.documents?.formats || [],
+            ...formats.categories.programming?.formats || [],
+            ...formats.categories.web?.formats || [],
+            ...formats.categories.config?.formats || [],
+            ...formats.categories.docs?.formats || []
+          ]
+          const updatedSettings = {
+            ...localSettings,
+            enabledFormats: defaultFormats
+          }
+          setLocalSettings(updatedSettings)
         }
       } catch (error) {
-        console.error('Failed to load settings:', error)
+        console.error('Failed to load formats:', error)
+      } finally {
+        setLoading(false)
       }
     }
-    loadSettings()
-  }, [])
+    
+    loadFormats()
+  }, [isOpen, getSupportedFormats])
 
   // 保存设置
   const handleSave = async () => {
     try {
-      await window.electronAPI?.settings?.save(settings)
-      onSettingsChange?.(settings)
+      await saveSettings(localSettings)
+      onSettingsChange?.(localSettings)
       setIsOpen(false)
     } catch (error) {
       console.error('Failed to save settings:', error)
@@ -123,7 +166,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   // 重置设置
   const handleReset = () => {
-    setSettings(DEFAULT_SETTINGS)
+    setLocalSettings(DEFAULT_SETTINGS)
   }
 
   // 设置更新函数
@@ -131,7 +174,60 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     key: K, 
     value: SettingsData[K]
   ) => {
-    setSettings(prev => ({ ...prev, [key]: value }))
+    setLocalSettings(prev => ({ ...prev, [key]: value }))
+  }
+
+  // 格式管理函数
+  const toggleCategory = (categoryKey: string) => {
+    const category = formatsData?.categories[categoryKey]
+    if (!category) return
+
+    const isEnabled = localSettings.enabledCategories.includes(categoryKey)
+    
+    if (isEnabled) {
+      // 禁用分类：从启用分类中移除，并移除该分类的所有格式
+      updateSetting('enabledCategories', localSettings.enabledCategories.filter(c => c !== categoryKey))
+      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => !category.formats.includes(f)))
+    } else {
+      // 启用分类：添加到启用分类，并添加该分类的所有格式
+      updateSetting('enabledCategories', [...localSettings.enabledCategories, categoryKey])
+      updateSetting('enabledFormats', [...new Set([...localSettings.enabledFormats, ...category.formats])])
+    }
+  }
+
+  const toggleFormat = (format: string) => {
+    const isEnabled = localSettings.enabledFormats.includes(format)
+    
+    if (isEnabled) {
+      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => f !== format))
+    } else {
+      updateSetting('enabledFormats', [...localSettings.enabledFormats, format])
+    }
+  }
+
+  const selectAllFormats = () => {
+    if (!formatsData) return
+    updateSetting('enabledFormats', formatsData.supported_formats)
+    updateSetting('enabledCategories', Object.keys(formatsData.categories))
+  }
+
+  const deselectAllFormats = () => {
+    updateSetting('enabledFormats', [])
+    updateSetting('enabledCategories', [])
+  }
+
+  // 获取图标组件
+  const getIconComponent = (iconName: string) => {
+    const icons: { [key: string]: any } = {
+      FileText,
+      Code,
+      Globe,
+      Settings: SettingsIcon,
+      Terminal,
+      BookOpen,
+      Package
+    }
+    return icons[iconName] || FileText
   }
 
   return (
@@ -185,7 +281,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <div className="space-y-2">
                     <Label>默认搜索类型</Label>
                     <Select 
-                      value={settings.defaultSearchType} 
+                      value={localSettings.defaultSearchType} 
                       onValueChange={(value) => updateSetting('defaultSearchType', value as any)}
                     >
                       <SelectTrigger>
@@ -204,7 +300,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>搜索结果限制</Label>
                     <Input 
                       type="number"
-                      value={settings.searchResultLimit}
+                      value={localSettings.searchResultLimit}
                       onChange={(e) => updateSetting('searchResultLimit', Number(e.target.value))}
                       min="10"
                       max="10000"
@@ -215,7 +311,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>模糊搜索阈值 (%)</Label>
                     <Input 
                       type="number"
-                      value={settings.fuzzyThreshold}
+                      value={localSettings.fuzzyThreshold}
                       onChange={(e) => updateSetting('fuzzyThreshold', Number(e.target.value))}
                       min="0"
                       max="100"
@@ -226,7 +322,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>搜索延迟 (ms)</Label>
                     <Input 
                       type="number"
-                      value={settings.searchDebounce}
+                      value={localSettings.searchDebounce}
                       onChange={(e) => updateSetting('searchDebounce', Number(e.target.value))}
                       min="0"
                       max="1000"
@@ -236,7 +332,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
                 <div className="flex items-center space-x-2">
                   <Switch 
-                    checked={settings.autoSearch}
+                    checked={localSettings.autoSearch}
                     onCheckedChange={(checked) => updateSetting('autoSearch', checked)}
                   />
                   <Label>边输入边搜索</Label>
@@ -259,7 +355,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <div className="space-y-2">
                     <Label>主题</Label>
                     <Select 
-                      value={settings.theme} 
+                      value={localSettings.theme} 
                       onValueChange={(value) => updateSetting('theme', value as any)}
                     >
                       <SelectTrigger>
@@ -276,7 +372,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <div className="space-y-2">
                     <Label>界面语言</Label>
                     <Select 
-                      value={settings.language} 
+                      value={localSettings.language} 
                       onValueChange={(value) => updateSetting('language', value as any)}
                     >
                       <SelectTrigger>
@@ -292,7 +388,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <div className="space-y-2">
                     <Label>列表密度</Label>
                     <Select 
-                      value={settings.listDensity} 
+                      value={localSettings.listDensity} 
                       onValueChange={(value) => updateSetting('listDensity', value as any)}
                     >
                       <SelectTrigger>
@@ -313,21 +409,21 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <Switch 
-                        checked={settings.showFileSize}
+                        checked={localSettings.showFileSize}
                         onCheckedChange={(checked) => updateSetting('showFileSize', checked)}
                       />
                       <Label>文件大小</Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Switch 
-                        checked={settings.showLastModified}
+                        checked={localSettings.showLastModified}
                         onCheckedChange={(checked) => updateSetting('showLastModified', checked)}
                       />
                       <Label>修改时间</Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Switch 
-                        checked={settings.showContentPreview}
+                        checked={localSettings.showContentPreview}
                         onCheckedChange={(checked) => updateSetting('showContentPreview', checked)}
                       />
                       <Label>内容预览</Label>
@@ -344,28 +440,94 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-4 w-4" />
-                  文件类型过滤
+                  文件格式管理
                 </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Label>支持的文件类型</Label>
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  {settings.supportedFileTypes.map(type => (
-                    <div key={type} className="flex items-center space-x-2">
-                      <Switch 
-                        checked={settings.enabledFileTypes.includes(type)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            updateSetting('enabledFileTypes', [...settings.enabledFileTypes, type])
-                          } else {
-                            updateSetting('enabledFileTypes', settings.enabledFileTypes.filter(t => t !== type))
-                          }
-                        }}
-                      />
-                      <Badge variant="outline">{type.toUpperCase()}</Badge>
-                    </div>
-                  ))}
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" variant="outline" onClick={selectAllFormats}>
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    全选
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={deselectAllFormats}>
+                    <Circle className="h-4 w-4 mr-1" />
+                    全不选
+                  </Button>
+                  {formatsData && (
+                    <Badge variant="secondary" className="ml-auto">
+                      已启用: {localSettings.enabledFormats.length} / {formatsData.total_count}
+                    </Badge>
+                  )}
                 </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {loading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-muted-foreground">加载文件格式中...</div>
+                  </div>
+                ) : formatsData ? (
+                  <div className="space-y-6">
+                    {Object.entries(formatsData.categories).map(([categoryKey, category]) => {
+                      const IconComponent = getIconComponent(category.icon)
+                      const isCategoryEnabled = localSettings.enabledCategories.includes(categoryKey)
+                      const enabledInCategory = category.formats.filter(f => localSettings.enabledFormats.includes(f)).length
+                      
+                      return (
+                        <div key={categoryKey} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <IconComponent className="h-5 w-5" />
+                              <div>
+                                <h4 className="font-medium">{category.name}</h4>
+                                <p className="text-sm text-muted-foreground">{category.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">
+                                {enabledInCategory}/{category.count}
+                              </Badge>
+                              <Switch
+                                checked={isCategoryEnabled}
+                                onCheckedChange={() => toggleCategory(categoryKey)}
+                              />
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-6 gap-2">
+                            {category.formats.map(format => {
+                              const isEnabled = localSettings.enabledFormats.includes(format)
+                              const description = formatsData.format_descriptions[format] || format.toUpperCase()
+                              
+                              return (
+                                <div
+                                  key={format}
+                                  className={`
+                                    flex items-center justify-between p-2 rounded border cursor-pointer transition-colors
+                                    ${isEnabled 
+                                      ? 'bg-primary/10 border-primary/20 text-primary' 
+                                      : 'bg-muted/50 border-border hover:bg-muted'
+                                    }
+                                  `}
+                                  onClick={() => toggleFormat(format)}
+                                  title={description}
+                                >
+                                  <span className="text-xs font-mono">{format.replace('.', '')}</span>
+                                  {isEnabled ? (
+                                    <CheckCircle className="h-3 w-3" />
+                                  ) : (
+                                    <Circle className="h-3 w-3" />
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-muted-foreground">无法加载文件格式数据</div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -385,7 +547,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>服务端口</Label>
                     <Input 
                       type="number"
-                      value={settings.serverPort}
+                      value={localSettings.serverPort}
                       onChange={(e) => updateSetting('serverPort', Number(e.target.value))}
                       min="1024"
                       max="65535"
@@ -396,7 +558,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>工作进程数</Label>
                     <Input 
                       type="number"
-                      value={settings.workerCount}
+                      value={localSettings.workerCount}
                       onChange={(e) => updateSetting('workerCount', Number(e.target.value))}
                       min="1"
                       max="32"
@@ -406,7 +568,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
                 <div className="flex items-center space-x-2">
                   <Switch 
-                    checked={settings.autoStartBackend}
+                    checked={localSettings.autoStartBackend}
                     onCheckedChange={(checked) => updateSetting('autoStartBackend', checked)}
                   />
                   <Label>启动时自动启动后端服务</Label>
@@ -430,7 +592,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>索引批处理大小</Label>
                     <Input 
                       type="number"
-                      value={settings.indexingBatchSize}
+                      value={localSettings.indexingBatchSize}
                       onChange={(e) => updateSetting('indexingBatchSize', Number(e.target.value))}
                       min="100"
                       max="10000"
@@ -441,7 +603,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>最大文件大小 (MB)</Label>
                     <Input 
                       type="number"
-                      value={settings.maxFileSize}
+                      value={localSettings.maxFileSize}
                       onChange={(e) => updateSetting('maxFileSize', Number(e.target.value))}
                       min="1"
                       max="1000"
@@ -451,7 +613,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
                 <div className="flex items-center space-x-2">
                   <Switch 
-                    checked={settings.enableChineseTokenizer}
+                    checked={localSettings.enableChineseTokenizer}
                     onCheckedChange={(checked) => updateSetting('enableChineseTokenizer', checked)}
                   />
                   <Label>启用中文分词器</Label>
