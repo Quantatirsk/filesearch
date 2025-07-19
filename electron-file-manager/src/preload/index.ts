@@ -14,7 +14,9 @@ export interface ElectronAPI {
   files: {
     selectDirectory: () => Promise<string | null>
     copy: (files: string[], destination: string) => Promise<{ success: boolean; message: string; results?: any[] }>
+    copyToClipboard: (files: string[]) => Promise<{ success: boolean; message: string; results?: any[] }>
     move: (files: string[], destination: string) => Promise<{ success: boolean; message: string; results?: any[] }>
+    rename: (oldPath: string, newPath: string) => Promise<{ success: boolean; message: string }>
     delete: (files: string[]) => Promise<{ success: boolean; message: string; results?: any[] }>
     openFile: (filePath: string) => Promise<{ success: boolean; message: string }>
     openInExplorer: (filePath: string) => Promise<{ success: boolean; message: string }>
@@ -43,7 +45,9 @@ const api: ElectronAPI = {
   files: {
     selectDirectory: () => ipcRenderer.invoke('files:select-directory'),
     copy: (files: string[], destination: string) => ipcRenderer.invoke('files:copy', files, destination),
+    copyToClipboard: (files: string[]) => ipcRenderer.invoke('files:copy-to-clipboard', files),
     move: (files: string[], destination: string) => ipcRenderer.invoke('files:move', files, destination),
+    rename: (oldPath: string, newPath: string) => ipcRenderer.invoke('files:rename', oldPath, newPath),
     delete: (files: string[]) => ipcRenderer.invoke('files:delete', files),
     openFile: (filePath: string) => ipcRenderer.invoke('files:open-file', filePath),
     openInExplorer: (filePath: string) => ipcRenderer.invoke('files:open-in-explorer', filePath)

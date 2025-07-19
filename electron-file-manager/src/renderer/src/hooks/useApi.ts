@@ -1,6 +1,39 @@
 import { useCallback } from 'react'
 import { SearchOptions, AdvancedSearchOptions, IndexOptions, SearchResult, IndexResult, DatabaseStats, SupportedFormatsResponse } from '../types'
 
+export interface FileContentRequest {
+  file_path: string
+}
+
+export interface FileContentResponse {
+  success: boolean
+  file_path: string
+  content: string | null
+  error?: string
+}
+
+export interface RemoveFileRequest {
+  file_path: string
+}
+
+export interface RemoveFileResponse {
+  success: boolean
+  file_path: string
+  error?: string
+}
+
+export interface UpdateFilePathRequest {
+  old_path: string
+  new_path: string
+}
+
+export interface UpdateFilePathResponse {
+  success: boolean
+  old_path: string
+  new_path: string
+  error?: string
+}
+
 export const useApi = () => {
   const makeRequest = useCallback(async (options: any) => {
     try {
@@ -71,6 +104,30 @@ export const useApi = () => {
     })
   }, [makeRequest])
 
+  const getFileContent = useCallback(async (filePath: string): Promise<FileContentResponse> => {
+    return await makeRequest({
+      method: 'POST',
+      url: '/file/content',
+      data: { file_path: filePath }
+    })
+  }, [makeRequest])
+
+  const removeFileFromIndex = useCallback(async (filePath: string): Promise<RemoveFileResponse> => {
+    return await makeRequest({
+      method: 'DELETE',
+      url: '/file',
+      data: { file_path: filePath }
+    })
+  }, [makeRequest])
+
+  const updateFilePath = useCallback(async (oldPath: string, newPath: string): Promise<UpdateFilePathResponse> => {
+    return await makeRequest({
+      method: 'PUT',
+      url: '/file/path',
+      data: { old_path: oldPath, new_path: newPath }
+    })
+  }, [makeRequest])
+
   return {
     search,
     advancedSearch,
@@ -78,6 +135,9 @@ export const useApi = () => {
     getStats,
     getSupportedFormats,
     clearIndex,
-    healthCheck
+    healthCheck,
+    getFileContent,
+    removeFileFromIndex,
+    updateFilePath
   }
 }

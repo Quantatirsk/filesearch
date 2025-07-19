@@ -1,16 +1,55 @@
-import React, { useCallback, useMemo } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import React, { useCallback, useMemo, useState } from 'react'
 import { FileItem } from '../types'
 import { useAppStore } from '../stores/app-store'
+import { useApi } from '../hooks/useApi'
 import { formatFileSize, formatDate, getFileIcon } from '../lib/utils'
 import { cn } from '../lib/utils'
 import { Checkbox } from './ui/checkbox'
+import { PreviewDialog } from './PreviewDialog'
+import { Button } from './ui/button'
+import { toast } from 'sonner'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
+import { Input } from './ui/input'
+import { 
+  Eye, 
+  ExternalLink, 
+  Folder, 
+  MoreHorizontal, 
+  Copy, 
+  Edit, 
+  Trash2 
+} from 'lucide-react'
 
 interface FileListProps {
   containerRef: React.RefObject<HTMLDivElement>
 }
 
 export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) => {
+  // API hooks
+  const { removeFileFromIndex, updateFilePath } = useApi()
+  
   // 精确选择需要的状态，避免不必要的重新渲染
   const searchResults = useAppStore(state => state.searchResults)
   const selectedFiles = useAppStore(state => state.selectedFiles)
@@ -18,14 +57,16 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   const selectAllFiles = useAppStore(state => state.selectAllFiles)
   const clearSelection = useAppStore(state => state.clearSelection)
   const isBackendRunning = useAppStore(state => state.isBackendRunning)
+  const searchQuery = useAppStore(state => state.searchQuery)
 
-  // 正确使用 useVirtualizer hook
-  const virtualizer = useVirtualizer({
-    count: searchResults.length,
-    getScrollElement: () => containerRef.current,
-    estimateSize: () => 56, // Estimated row height
-    overscan: 10
-  })
+  // Preview dialog state
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  
+  // Rename dialog state
+  const [renameFilePath, setRenameFilePath] = useState<string | null>(null)
+  const [isRenameOpen, setIsRenameOpen] = useState(false)
+  const [newFileName, setNewFileName] = useState('')
 
   const handleCheckboxChange = useCallback((filePath: string, checked: boolean) => {
     if (checked) {
@@ -63,11 +104,11 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           console.log('File shown in explorer as fallback')
         } else {
           console.error('Both open methods failed:', fallbackResult.message)
-          alert(`无法打开文件: ${fallbackResult.message}`)
+          toast.error(`无法打开文件: ${fallbackResult.message}`)
         }
       } catch (fallbackError) {
         console.error('Failed to open in explorer:', fallbackError)
-        alert(`无法打开文件: ${fallbackError}`)
+        toast.error(`无法打开文件: ${fallbackError}`)
       }
     }
   }, [])
@@ -83,13 +124,179 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       console.log('Open directory result:', result)
       
       if (!result.success) {
-        alert(`无法打开目录: ${result.message}`)
+        toast.error(`无法打开目录: ${result.message}`)
       }
     } catch (error) {
       console.error('Failed to open directory:', error)
-      alert(`无法打开目录: ${error}`)
+      toast.error(`无法打开目录: ${error}`)
     }
   }, [])
+
+  const handlePreview = useCallback(async (filePath: string) => {
+    console.log('Preview file:', filePath)
+    setPreviewFilePath(filePath)
+    setIsPreviewOpen(true)
+  }, [])
+
+  const handleClosePreview = useCallback(() => {
+    setIsPreviewOpen(false)
+    setPreviewFilePath(null)
+  }, [])
+
+  // 文件操作处理函数
+  const handleCopyFile = useCallback(async (filePath: string) => {
+    try {
+      console.log('📋 Copying file to clipboard:', filePath)
+      // 使用系统剪贴板复制功能，类似 Ctrl+C / Cmd+C
+      const result = await window.electronAPI.files.copyToClipboard([filePath])
+      
+      console.log('📋 Copy result:', result)
+      
+      if (result.success) {
+        console.log('✅ Copy operation completed:', result.message)
+        console.log('💡 You can now paste using Ctrl+V (Windows/Linux) or Cmd+V (macOS)')
+        
+        // 根据消息判断是否是真正的文件复制还是文本路径复制
+        if (result.message.includes('file paths to clipboard as text')) {
+          console.log('⚠️ Note: Files were copied as text paths, not as actual files')
+          toast.success('文件路径已复制到剪贴板')
+        } else {
+          toast.success('文件已复制到剪贴板')
+        }
+      } else {
+        console.error('❌ Failed to copy file to clipboard:', result.message)
+        toast.error(`复制文件到剪贴板失败: ${result.message}`)
+      }
+    } catch (error) {
+      console.error('❌ Failed to copy file to clipboard:', error)
+      toast.error(`复制文件到剪贴板失败: ${error}`)
+    }
+  }, [])
+
+  const handleRenameFile = useCallback(async (filePath: string) => {
+    const fileName = filePath.split('/').pop() || ''
+    setRenameFilePath(filePath)
+    setNewFileName(fileName) // 包含完整文件名和扩展名
+    setIsRenameOpen(true)
+  }, [])
+
+  const handleConfirmRename = useCallback(async () => {
+    if (!renameFilePath || !newFileName.trim()) {
+      return
+    }
+    
+    try {
+      const oldFileName = renameFilePath.split('/').pop() || ''
+      const newFullFileName = newFileName.trim()
+      
+      const directory = renameFilePath.substring(0, renameFilePath.lastIndexOf('/'))
+      const newFilePath = `${directory}/${newFullFileName}`
+      
+      // 检查新文件名是否与旧文件名相同
+      if (newFullFileName === oldFileName) {
+        setIsRenameOpen(false)
+        setRenameFilePath(null)
+        setNewFileName('')
+        return
+      }
+      
+      // 使用专门的 rename 操作来重命名文件
+      const result = await window.electronAPI.files.rename(renameFilePath, newFilePath)
+      
+      if (result.success) {
+        console.log('File renamed successfully:', renameFilePath, 'to', newFilePath)
+        
+        // 同步更新数据库索引中的文件路径
+        try {
+          const updateResult = await updateFilePath(renameFilePath, newFilePath)
+          if (updateResult.success) {
+            console.log('Database index updated successfully')
+          } else {
+            console.warn('Failed to update database index:', updateResult.error)
+          }
+        } catch (dbError) {
+          console.warn('Failed to update database index:', dbError)
+        }
+        
+        // 更新搜索结果中的文件信息
+        const updatedResults = searchResults.map(file => {
+          if (file.file_path === renameFilePath) {
+            return {
+              ...file,
+              file_path: newFilePath,
+              file_name: newFullFileName
+            }
+          }
+          return file
+        })
+        useAppStore.setState({ searchResults: updatedResults })
+        
+        // 如果文件在选中列表中，也要更新
+        if (selectedFiles.includes(renameFilePath)) {
+          const updatedSelection = selectedFiles.map(f => f === renameFilePath ? newFilePath : f)
+          useAppStore.setState({ selectedFiles: updatedSelection })
+        }
+        
+        toast.success('文件重命名成功')
+      } else {
+        console.error('Failed to rename file:', result.message)
+        toast.error(`重命名文件失败: ${result.message}`)
+      }
+      
+      setIsRenameOpen(false)
+      setRenameFilePath(null)
+      setNewFileName('')
+    } catch (error) {
+      console.error('Failed to rename file:', error)
+      toast.error(`重命名文件失败: ${error}`)
+    }
+  }, [renameFilePath, newFileName, searchResults, selectedFiles, updateFilePath])
+
+  const handleDeleteFile = useCallback(async (filePath: string) => {
+    const confirmed = window.confirm(`确定要删除文件 "${filePath.split('/').pop()}" 吗？\n\n此操作不可撤销！`)
+    
+    if (!confirmed) {
+      return
+    }
+    
+    try {
+      const result = await window.electronAPI.files.delete([filePath])
+      
+      if (result.success) {
+        console.log('File deleted successfully:', filePath)
+        
+        // 同步删除数据库索引中的文件
+        try {
+          const removeResult = await removeFileFromIndex(filePath)
+          if (removeResult.success) {
+            console.log('File removed from database index successfully')
+          } else {
+            console.warn('Failed to remove file from database index:', removeResult.error)
+          }
+        } catch (dbError) {
+          console.warn('Failed to remove file from database index:', dbError)
+        }
+        
+        // 从搜索结果中移除已删除的文件
+        const updatedResults = searchResults.filter(file => file.file_path !== filePath)
+        useAppStore.setState({ searchResults: updatedResults })
+        
+        // 如果文件在选中列表中，也要移除
+        if (selectedFiles.includes(filePath)) {
+          const updatedSelection = selectedFiles.filter(f => f !== filePath)
+          useAppStore.setState({ selectedFiles: updatedSelection })
+        }
+        
+        toast.success('文件删除成功')
+      } else {
+        console.error('Failed to delete file:', result.message)
+        toast.error(`删除文件失败: ${result.message}`)
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error)
+      toast.error(`删除文件失败: ${error}`)
+    }
+  }, [searchResults, selectedFiles, removeFileFromIndex])
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.ctrlKey || event.metaKey) {
@@ -104,85 +311,75 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     }
   }, [selectAllFiles, clearSelection])
 
-  // 优化FileRow组件，使用勾选框替代点击选中
-  const FileRow = React.memo(({ file, isSelected, onCheckboxChange, onOpenFile, onOpenDirectory }: { 
-    file: FileItem; 
-    isSelected: boolean;
-    onCheckboxChange: (filePath: string, checked: boolean) => void;
-    onOpenFile: (filePath: string, event: React.MouseEvent) => void;
-    onOpenDirectory: (filePath: string, event: React.MouseEvent) => void;
-  }) => {
-    return (
-      <div
-        className={cn(
-          "file-item flex items-center px-4 py-3 border-b border-border/50 hover:bg-secondary/50 transition-colors",
-          isSelected && "selected bg-primary/10"
-        )}
-        style={{ userSelect: 'none' }}
+  // 操作列组件
+  const FileActions = React.memo(({ file }: { file: FileItem }) => (
+    <div className="flex items-center space-x-0.5">
+      {/* 预览按钮 */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={() => handlePreview(file.file_path)}
+        title="预览文件内容"
       >
-        {/* 勾选框 */}
-        <div className="flex-shrink-0 mr-3">
-          <Checkbox
-            checked={isSelected}
-            onCheckedChange={(checked) => onCheckboxChange(file.file_path, checked as boolean)}
-          />
-        </div>
-    
-        <div className="flex items-center space-x-3 flex-1 min-w-0">
-          <div className="text-2xl flex-shrink-0">
-            {getFileIcon(file.file_type)}
-          </div>
-          
-          <div className="flex-1 min-w-0">
-          {/* 文件名 - 可点击打开文件 */}
-          <div className="font-medium text-sm truncate">
-            <button
-              className="text-left text-blue-600 hover:text-blue-800 hover:underline focus:outline-none focus:underline w-full truncate"
-              onClick={(e) => onOpenFile(file.file_path, e)}
-              title={`点击打开: ${file.file_name}`}
-            >
-              {file.file_name}
-            </button>
-          </div>
-          
-          {/* 文件路径 - 可点击打开目录 */}
-          <div className="text-xs text-muted-foreground truncate">
-            <button
-              className="text-left text-gray-500 hover:text-gray-700 hover:underline focus:outline-none focus:underline w-full truncate"
-              onClick={(e) => onOpenDirectory(file.file_path, e)}
-              title={`点击打开目录: ${file.file_path}`}
-            >
-              {file.file_path}
-            </button>
-          </div>
-          
-          {/* 内容预览 */}
-          {file.content_preview && (
-            <div className="text-xs text-muted-foreground mt-1 truncate">
-              {file.content_preview}
-            </div>
-          )}
-        </div>
-        
-        <div className="flex-shrink-0 text-right">
-          <div className="text-xs text-muted-foreground">
-            {formatFileSize(file.file_size)}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {formatDate(file.last_modified)}
-          </div>
-          {file.match_score && file.match_score < 100 && (
-            <div className="text-xs text-primary font-medium" title="匹配度">
-              匹配 {Math.round(file.match_score)}%
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-    )
-  })
+        <Eye className="h-4 w-4" />
+      </Button>
 
-  const items = virtualizer.getVirtualItems()
+      {/* 打开文件按钮 */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={(e) => handleOpenFile(file.file_path, e)}
+        title="打开文件"
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
+
+      {/* 复制文件按钮 */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0"
+        onClick={() => handleCopyFile(file.file_path)}
+        title="复制文件"
+      >
+        <Copy className="h-4 w-4" />
+      </Button>
+
+      {/* 更多操作菜单 */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            title="更多操作"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={(e) => handleOpenDirectory(file.file_path, e)}>
+            <Folder className="mr-2 h-4 w-4" />
+            打开所在目录
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleRenameFile(file.file_path)}>
+            <Edit className="mr-2 h-4 w-4" />
+            重命名
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem 
+            onClick={() => handleDeleteFile(file.file_path)}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  ))
 
   if (!isBackendRunning) {
     return (
@@ -209,46 +406,152 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="file-list-container overflow-auto"
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-    >
+    <div className="h-full flex flex-col">
+      {/* 表格容器 */}
       <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative'
-        }}
+        ref={containerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
       >
-        {items.map((virtualItem) => {
-          const file = searchResults[virtualItem.index]
-          const isSelected = selectedFiles.includes(file.file_path)
-          
-          return (
-            <div
-              key={virtualItem.key}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: `${virtualItem.size}px`,
-                transform: `translateY(${virtualItem.start}px)`
-              }}
-            >
-              <FileRow 
-                file={file} 
-                isSelected={isSelected} 
-                onCheckboxChange={handleCheckboxChange}
-                onOpenFile={handleOpenFile}
-                onOpenDirectory={handleOpenDirectory}
-              />
-            </div>
-          )
-        })}
+        <Table className="table-fixed w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={selectedFiles.length === searchResults.length && searchResults.length > 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      selectAllFiles()
+                    } else {
+                      clearSelection()
+                    }
+                  }}
+                />
+              </TableHead>
+              <TableHead className="whitespace-nowrap">文件</TableHead>
+              <TableHead className="w-16 whitespace-nowrap">类型</TableHead>
+              <TableHead className="w-20 whitespace-nowrap">大小</TableHead>
+              <TableHead className="w-28 whitespace-nowrap">修改时间</TableHead>
+              <TableHead className="w-16 whitespace-nowrap">匹配度</TableHead>
+              <TableHead className="w-36 whitespace-nowrap text-center">操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {searchResults.map((file) => {
+              const isSelected = selectedFiles.includes(file.file_path)
+              
+              return (
+                <TableRow
+                  key={file.file_path}
+                  className={cn(
+                    "hover:bg-muted/50",
+                    isSelected && "bg-primary/5"
+                  )}
+                >
+                  <TableCell>
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={(checked) => handleCheckboxChange(file.file_path, checked as boolean)}
+                    />
+                  </TableCell>
+                  
+                  <TableCell>
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className="text-xl flex-shrink-0">
+                        {getFileIcon(file.file_type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {file.file_name}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {file.file_path}
+                        </div>
+                        {file.content_preview && (
+                          <div className="text-xs text-muted-foreground truncate mt-1 opacity-75">
+                            {file.content_preview}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  
+                  <TableCell>
+                    <span className="text-xs bg-secondary/50 px-2 py-1 rounded-md">
+                      {file.file_type.toUpperCase()}
+                    </span>
+                  </TableCell>
+                  
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatFileSize(file.file_size)}
+                  </TableCell>
+                  
+                  <TableCell className="text-xs text-muted-foreground">
+                    {formatDate(file.last_modified)}
+                  </TableCell>
+                  
+                  <TableCell>
+                    {file.match_score && file.match_score < 100 ? (
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-md">
+                        {Math.round(file.match_score)}%
+                      </span>
+                    ) : null}
+                  </TableCell>
+                  
+                  <TableCell>
+                    <FileActions file={file} />
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       </div>
+      
+      {/* Preview Dialog */}
+      <PreviewDialog
+        filePath={previewFilePath}
+        isOpen={isPreviewOpen}
+        onClose={handleClosePreview}
+        searchQuery={searchQuery}
+      />
+      
+      {/* Rename Dialog */}
+      <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重命名文件</DialogTitle>
+            <DialogDescription>
+              输入新的文件名（包含扩展名）
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              placeholder="新文件名"
+              className="w-full"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleConfirmRename()
+                } else if (e.key === 'Escape') {
+                  setIsRenameOpen(false)
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleConfirmRename} disabled={!newFileName.trim()}>
+              确认
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 })

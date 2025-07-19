@@ -120,8 +120,16 @@ function setupIpcHandlers(): void {
     return await fileOperations.copyFiles(files, destination)
   })
 
+  ipcMain.handle('files:copy-to-clipboard', async (_, files: string[]) => {
+    return await fileOperations.copyFilesToClipboard(files)
+  })
+
   ipcMain.handle('files:move', async (_, files: string[], destination: string) => {
     return await fileOperations.moveFiles(files, destination)
+  })
+
+  ipcMain.handle('files:rename', async (_, oldPath: string, newPath: string) => {
+    return await fileOperations.renameFile(oldPath, newPath)
   })
 
   ipcMain.handle('files:delete', async (_, files: string[]) => {

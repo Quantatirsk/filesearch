@@ -35,7 +35,7 @@ import {
 } from 'lucide-react'
 
 import { useApi } from '../hooks/useApi'
-import { useSettings } from '../hooks/useSettings'
+import { useAppStore } from '../stores/app-store'
 import { SupportedFormatsResponse, FormatCategory } from '../types'
 
 interface SettingsData {
@@ -84,7 +84,14 @@ const DEFAULT_SETTINGS: SettingsData = {
   showContentPreview: true,
   
   enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
-  enabledFormats: [],
+  enabledFormats: [
+    // Default formats for common document types
+    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md',
+    // Programming files
+    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css',
+    // Config files
+    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf'
+  ],
   
   serverPort: 8001,
   workerCount: 8,
@@ -104,7 +111,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   children, 
   onSettingsChange 
 }) => {
-  const { settings, saveSettings, loadSettings } = useSettings()
+  const { settings, saveSettings, settingsLoading } = useAppStore()
   const [localSettings, setLocalSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const [isOpen, setIsOpen] = useState(false)
   const [formatsData, setFormatsData] = useState<SupportedFormatsResponse | null>(null)
@@ -114,7 +121,19 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 同步设置数据
   useEffect(() => {
     if (isOpen) {
-      setLocalSettings({ ...DEFAULT_SETTINGS, ...settings })
+      console.log('📋 SettingsDialog - Syncing settings:')
+      console.log('  - Settings from global store:', settings)
+      console.log('  - Settings.enabledFormats:', settings.enabledFormats)
+      // 直接使用全局store中的设置，如果字段不存在才使用默认值
+      const syncedSettings = {
+        ...DEFAULT_SETTINGS,
+        ...settings,
+        // 确保 enabledFormats 正确同步
+        enabledFormats: settings.enabledFormats || DEFAULT_SETTINGS.enabledFormats
+      }
+      console.log('  - Synced settings:', syncedSettings)
+      console.log('  - Final enabledFormats:', syncedSettings.enabledFormats)
+      setLocalSettings(syncedSettings)
     }
   }, [isOpen, settings])
 
@@ -128,20 +147,27 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         const formats = await getSupportedFormats()
         setFormatsData(formats)
         
-        // 如果是第一次加载，设置默认启用的格式
-        if (!settings?.enabledFormats?.length && formats.success) {
+        // 只在用户首次使用且没有保存过任何设置时，才从API设置默认格式
+        // 注意：永远不要覆盖用户已经保存的选择，即使是空数组
+        if (settings.enabledFormats.length === 0 && formats.success) {
+          console.log('📋 First time user, setting default formats from API')
           const defaultFormats = [
             ...formats.categories.documents?.formats || [],
             ...formats.categories.programming?.formats || [],
             ...formats.categories.web?.formats || [],
             ...formats.categories.config?.formats || [],
             ...formats.categories.docs?.formats || []
-          ]
+          ].map(format => format.startsWith('.') ? format : `.${format}`) // 确保格式有点前缀
           const updatedSettings = {
             ...localSettings,
             enabledFormats: defaultFormats
           }
+          console.log('📋 Setting default formats:', defaultFormats)
           setLocalSettings(updatedSettings)
+        } else {
+          console.log('📋 Using existing user settings, not setting defaults')
+          console.log('  - settings object:', settings)
+          console.log('  - enabledFormats:', settings?.enabledFormats)
         }
       } catch (error) {
         console.error('Failed to load formats:', error)
@@ -156,9 +182,18 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   // 保存设置
   const handleSave = async () => {
     try {
-      await saveSettings(localSettings)
+      console.log('💾 SettingsDialog - Saving settings...')
+      console.log('  - Local settings to save:', localSettings)
+      console.log('  - enabledFormats to save:', localSettings.enabledFormats)
+      
+      const saveResult = await saveSettings(localSettings)
+      console.log('  - Save result:', saveResult)
+      
       onSettingsChange?.(localSettings)
+      console.log('  - onSettingsChange called with:', localSettings)
+      
       setIsOpen(false)
+      console.log('  - Dialog closed')
     } catch (error) {
       console.error('Failed to save settings:', error)
     }
@@ -187,27 +222,31 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     if (isEnabled) {
       // 禁用分类：从启用分类中移除，并移除该分类的所有格式
       updateSetting('enabledCategories', localSettings.enabledCategories.filter(c => c !== categoryKey))
-      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => !category.formats.includes(f)))
+      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => !formatsWithDots.includes(f)))
     } else {
       // 启用分类：添加到启用分类，并添加该分类的所有格式
       updateSetting('enabledCategories', [...localSettings.enabledCategories, categoryKey])
-      updateSetting('enabledFormats', [...new Set([...localSettings.enabledFormats, ...category.formats])])
+      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+      updateSetting('enabledFormats', [...new Set([...localSettings.enabledFormats, ...formatsWithDots])])
     }
   }
 
   const toggleFormat = (format: string) => {
-    const isEnabled = localSettings.enabledFormats.includes(format)
+    const formatWithDot = format.startsWith('.') ? format : `.${format}`
+    const isEnabled = localSettings.enabledFormats.includes(formatWithDot)
     
     if (isEnabled) {
-      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => f !== format))
+      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => f !== formatWithDot))
     } else {
-      updateSetting('enabledFormats', [...localSettings.enabledFormats, format])
+      updateSetting('enabledFormats', [...localSettings.enabledFormats, formatWithDot])
     }
   }
 
   const selectAllFormats = () => {
     if (!formatsData) return
-    updateSetting('enabledFormats', formatsData.supported_formats)
+    const formatsWithDots = formatsData.supported_formats.map(f => f.startsWith('.') ? f : `.${f}`)
+    updateSetting('enabledFormats', formatsWithDots)
     updateSetting('enabledCategories', Object.keys(formatsData.categories))
   }
 
@@ -468,7 +507,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {Object.entries(formatsData.categories).map(([categoryKey, category]) => {
                       const IconComponent = getIconComponent(category.icon)
                       const isCategoryEnabled = localSettings.enabledCategories.includes(categoryKey)
-                      const enabledInCategory = category.formats.filter(f => localSettings.enabledFormats.includes(f)).length
+                      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+                      const enabledInCategory = formatsWithDots.filter(f => localSettings.enabledFormats.includes(f)).length
                       
                       return (
                         <div key={categoryKey} className="border rounded-lg p-4">
@@ -493,7 +533,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                           
                           <div className="grid grid-cols-6 gap-2">
                             {category.formats.map(format => {
-                              const isEnabled = localSettings.enabledFormats.includes(format)
+                              const formatWithDot = format.startsWith('.') ? format : `.${format}`
+                              const isEnabled = localSettings.enabledFormats.includes(formatWithDot)
                               const description = formatsData.format_descriptions[format] || format.toUpperCase()
                               
                               return (

@@ -77,6 +77,33 @@ class StatsResponse(BaseModel):
     file_types: Dict[str, int]
     error: Optional[str] = None
 
+class FileContentRequest(BaseModel):
+    file_path: str = Field(..., description="Path to the file")
+
+class FileContentResponse(BaseModel):
+    success: bool
+    file_path: str
+    content: Optional[str]
+    error: Optional[str] = None
+
+class RemoveFileRequest(BaseModel):
+    file_path: str = Field(..., description="Path to the file to remove from index")
+
+class RemoveFileResponse(BaseModel):
+    success: bool
+    file_path: str
+    error: Optional[str] = None
+
+class UpdateFilePathRequest(BaseModel):
+    old_path: str = Field(..., description="Current file path")
+    new_path: str = Field(..., description="New file path")
+
+class UpdateFilePathResponse(BaseModel):
+    success: bool
+    old_path: str
+    new_path: str
+    error: Optional[str] = None
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -294,6 +321,41 @@ async def advanced_search(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/file/content", response_model=FileContentResponse)
+async def get_file_content(
+    request: FileContentRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Get the full indexed content of a specific file
+    """
+    try:
+        with get_database(db_path) as db:
+            content = db.get_document_content(request.file_path)
+            
+            if content is None:
+                return FileContentResponse(
+                    success=False,
+                    file_path=request.file_path,
+                    content=None,
+                    error="File not found in index"
+                )
+            
+            return FileContentResponse(
+                success=True,
+                file_path=request.file_path,
+                content=content
+            )
+    
+    except Exception as e:
+        return FileContentResponse(
+            success=False,
+            file_path=request.file_path,
+            content=None,
+            error=str(e)
+        )
 
 
 @app.post("/index", response_model=IndexResponse)
@@ -608,6 +670,60 @@ async def get_supported_formats():
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/file", response_model=RemoveFileResponse)
+async def remove_file_from_index(
+    request: RemoveFileRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Remove a specific file from the search index
+    """
+    try:
+        with get_database(db_path) as db:
+            success = db.remove_document(request.file_path)
+            
+            return RemoveFileResponse(
+                success=success,
+                file_path=request.file_path,
+                error=None if success else "File not found in index"
+            )
+    
+    except Exception as e:
+        return RemoveFileResponse(
+            success=False,
+            file_path=request.file_path,
+            error=str(e)
+        )
+
+
+@app.put("/file/path", response_model=UpdateFilePathResponse)
+async def update_file_path(
+    request: UpdateFilePathRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Update file path in the search index (for rename operations)
+    """
+    try:
+        with get_database(db_path) as db:
+            success = db.update_file_path(request.old_path, request.new_path)
+            
+            return UpdateFilePathResponse(
+                success=success,
+                old_path=request.old_path,
+                new_path=request.new_path,
+                error=None if success else "File not found in index"
+            )
+    
+    except Exception as e:
+        return UpdateFilePathResponse(
+            success=False,
+            old_path=request.old_path,
+            new_path=request.new_path,
+            error=str(e)
+        )
 
 
 if __name__ == "__main__":

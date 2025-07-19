@@ -1,12 +1,11 @@
 import { useCallback, useRef } from 'react'
 import { useApi } from './useApi'
-import { useSettings } from './useSettings'
 import { useAppStore } from '../stores/app-store'
 import { debounce, parseMultiKeywords } from '../lib/utils'
 
 export const useSearch = () => {
   const { search } = useApi()
-  const { settings } = useSettings()
+  const settings = useAppStore(state => state.settings)
   const setSearchResults = useAppStore(state => state.setSearchResults)
   const setSearching = useAppStore(state => state.setSearching)
   const setSearchQuery = useAppStore(state => state.setSearchQuery)
@@ -38,6 +37,13 @@ export const useSearch = () => {
       const searchQuery = keywords.join(' ')
       
       const fileTypesToSend = settings.enabledFormats && settings.enabledFormats.length > 0 ? settings.enabledFormats : undefined
+      
+      // Debug logging
+      console.log('🔍 Search Debug Info:')
+      console.log('  - Query:', searchQuery)
+      console.log('  - Type:', type)
+      console.log('  - Settings enabled formats:', settings.enabledFormats)
+      console.log('  - File types to send:', fileTypesToSend)
       
       const result = await search({
         query: searchQuery,
@@ -93,7 +99,7 @@ export const useSearch = () => {
     } finally {
       setSearching(false)
     }
-  }, [search, setSearchResults, setSearching, setSearchQuery, isBackendRunning, settings.enabledFormats])
+  }, [search, setSearchResults, setSearching, setSearchQuery, isBackendRunning, settings])
 
   // Create stable debounced function using useRef
   const debouncedSearchRef = useRef<((query: string, type: string) => void) | null>(null)

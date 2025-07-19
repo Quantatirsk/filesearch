@@ -1,6 +1,6 @@
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
-import { shell } from 'electron'
+import { shell, clipboard } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -55,6 +55,119 @@ export class FileOperations {
     }
   }
 
+  async copyFilesToClipboard(files: string[]): Promise<{ success: boolean; message: string; results?: any[] }> {
+    try {
+      const results = []
+      
+      for (const file of files) {
+        try {
+          // Check if file exists
+          await fs.access(file)
+          results.push({
+            source: file,
+            success: true
+          })
+        } catch (error) {
+          results.push({
+            source: file,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          })
+        }
+      }
+
+      const validFiles = results.filter(r => r.success).map(r => r.source)
+      const failCount = results.filter(r => !r.success).length
+
+      if (validFiles.length === 0) {
+        return {
+          success: false,
+          message: 'No valid files to copy to clipboard',
+          results
+        }
+      }
+
+      // Try platform-specific clipboard methods
+      try {
+        if (process.platform === 'darwin') {
+          // macOS: Based on research, Electron has limited file clipboard support
+          // Let's use the most reliable method: writeBuffer with public.file-url
+          console.log('📋 Using Electron native writeBuffer for macOS')
+          
+          const filePath = validFiles[0]
+          
+          try {
+            // Method 1: Try using Electron's writeBuffer with proper format
+            const fileUrl = `file://${filePath}`
+            console.log('📋 Trying writeBuffer with public.file-url:', fileUrl)
+            
+            clipboard.writeBuffer('public.file-url', Buffer.from(fileUrl, 'utf8'))
+            console.log('✅ Electron writeBuffer executed successfully')
+            
+            // Verify if it worked by trying to read it back
+            try {
+              const readBack = clipboard.read('public.file-url')
+              console.log('📋 Clipboard verification - read back:', readBack)
+              
+              if (readBack && readBack.includes(filePath)) {
+                console.log('✅ File successfully copied to clipboard!')
+              } else {
+                throw new Error('Verification failed')
+              }
+            } catch (verifyError) {
+              console.log('⚠️ Verification failed, clipboard may not contain file properly')
+              throw verifyError
+            }
+            
+          } catch (bufferError) {
+            console.log('⚠️ writeBuffer method failed:', bufferError.message)
+            console.log('📋 Falling back to file path copy')
+            
+            // Fallback: Copy the file path so user can manually navigate
+            clipboard.writeText(filePath)
+            console.log('📋 Copied file path to clipboard as text:', filePath)
+          }
+        } else if (process.platform === 'win32') {
+          // Windows: Use PowerShell to copy files to clipboard
+          const fileList = validFiles.map(f => `"${f}"`).join(',')
+          const command = `powershell -command "Set-Clipboard -Path ${fileList}"`
+          await execAsync(command)
+          console.log('✅ PowerShell clipboard command executed successfully')
+        } else {
+          // Linux: Copy file paths to clipboard as fallback
+          const filePaths = validFiles.join('\n')
+          clipboard.writeText(filePaths)
+          console.log('✅ File paths copied to clipboard as text (Linux)')
+        }
+
+        return {
+          success: true,
+          message: `Copied ${validFiles.length} files to clipboard${failCount > 0 ? `, ${failCount} failed` : ''}`,
+          results
+        }
+      } catch (clipboardError) {
+        console.error('📋 Platform-specific clipboard copy failed:', clipboardError)
+        
+        // Fallback: Copy file paths as text
+        const filePaths = validFiles.join('\n')
+        clipboard.writeText(filePaths)
+        
+        console.log('📋 Fallback: Copied file paths as text to clipboard')
+        
+        return {
+          success: true,
+          message: `Platform-specific copy failed, copied ${validFiles.length} file paths to clipboard as text${failCount > 0 ? `, ${failCount} files failed validation` : ''}`,
+          results
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `Clipboard copy operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }
+    }
+  }
+
   async moveFiles(files: string[], destination: string): Promise<{ success: boolean; message: string; results?: any[] }> {
     try {
       // Ensure destination directory exists
@@ -99,6 +212,37 @@ export class FileOperations {
       return {
         success: false,
         message: `Move operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }
+    }
+  }
+
+  async renameFile(oldPath: string, newPath: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // Check if old file exists
+      await fs.access(oldPath)
+      
+      // Check if new path already exists
+      try {
+        await fs.access(newPath)
+        return {
+          success: false,
+          message: 'A file with the new name already exists'
+        }
+      } catch (error) {
+        // Good, new path doesn't exist
+      }
+      
+      // Rename file
+      await fs.rename(oldPath, newPath)
+      
+      return {
+        success: true,
+        message: 'File renamed successfully'
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `Rename operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       }
     }
   }

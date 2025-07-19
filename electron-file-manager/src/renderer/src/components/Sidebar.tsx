@@ -5,6 +5,7 @@ import { Button } from './ui/button'
 import { useAppStore } from '../stores/app-store'
 import { useApi } from '../hooks/useApi'
 import { formatFileSize } from '../lib/utils'
+import { toast } from 'sonner'
 
 export const Sidebar: React.FC = () => {
   const { stats, isBackendRunning, setStats, setSearchResults } = useAppStore()
@@ -16,7 +17,7 @@ export const Sidebar: React.FC = () => {
 
   const handleClearIndex = useCallback(async () => {
     if (!isBackendRunning) {
-      alert('后端服务未运行')
+      toast.error('后端服务未运行')
       return
     }
 
@@ -38,14 +39,14 @@ export const Sidebar: React.FC = () => {
         // 清空搜索结果
         setSearchResults([])
         
-        alert('索引已成功清空')
+        toast.success('索引已成功清空')
       } else {
         console.error('Failed to clear index:', result.message)
-        alert(`清空索引失败: ${result.message}`)
+        toast.error(`清空索引失败: ${result.message}`)
       }
     } catch (error) {
       console.error('Error clearing index:', error)
-      alert(`清空索引失败: ${error}`)
+      toast.error(`清空索引失败: ${error}`)
     } finally {
       setIsClearing(false)
     }

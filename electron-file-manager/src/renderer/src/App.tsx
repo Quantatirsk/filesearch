@@ -5,6 +5,8 @@ import { Toolbar } from './components/Toolbar'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { FolderNameDialog } from './components/FolderNameDialog'
+import { Toaster } from './components/ui/sonner'
+import { toast } from 'sonner'
 import { useAppStore } from './stores/app-store'
 import { useApi } from './hooks/useApi'
 
@@ -24,10 +26,16 @@ function App() {
     setCurrentDirectory, 
     clearSelection,
     setBackendRunning,
-    setStats
+    setStats,
+    loadSettings
   } = useAppStore()
   
   const { indexDirectory, getStats } = useApi()
+
+  // 启动时加载设置
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
 
   // 启动时自动启动后端服务
   useEffect(() => {
@@ -119,14 +127,17 @@ function App() {
             
             if (result.success) {
               console.log(`Auto-indexed ${result.indexed_files} files`)
+              toast.success(`成功索引 ${result.indexed_files} 个文件`)
               // 刷新统计信息
               const stats = await getStats()
               setStats(stats)
             } else {
               console.error('Auto-indexing failed:', result.error)
+              toast.error(`索引失败: ${result.error}`)
             }
           } catch (error) {
             console.error('Auto-indexing error:', error)
+            toast.error(`索引时发生错误: ${error}`)
           }
         }
       }
@@ -170,7 +181,7 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to copy files:', error)
-      alert(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
+      toast.error(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
     }
   }, [selectedFiles, searchQuery])
 
@@ -185,13 +196,13 @@ function App() {
       const result = await window.electronAPI.files.copy(pendingCopyData.files, destination)
       if (result.success) {
         clearSelection()
-        alert(`成功导出 ${pendingCopyData.files.length} 个文件到：\n${destination}`)
+        toast.success(`成功导出 ${pendingCopyData.files.length} 个文件到：${destination}`)
       } else {
-        alert(`导出操作失败：${result.message}`)
+        toast.error(`导出操作失败：${result.message}`)
       }
     } catch (error) {
       console.error('Failed to copy files:', error)
-      alert(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
+      toast.error(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
       setShowFolderDialog(false)
       setPendingCopyData(null)
@@ -256,6 +267,9 @@ function App() {
         onConfirm={handleFolderNameConfirm}
         onCancel={handleFolderNameCancel}
       />
+
+      {/* Toast Notifications */}
+      <Toaster position="top-right" duration={1000} />
     </div>
   )
 }

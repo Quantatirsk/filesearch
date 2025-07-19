@@ -482,6 +482,41 @@ class DocumentDatabase:
             self.conn.rollback()
             return False
     
+    def update_file_path(self, old_path: str, new_path: str) -> bool:
+        """
+        Update file path in the database (for rename operations).
+        
+        Args:
+            old_path: Current file path
+            new_path: New file path
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Check if old file exists in database
+            cursor.execute("SELECT doc_id FROM docs_meta WHERE file_path = ?", (old_path,))
+            result = cursor.fetchone()
+            if not result:
+                return False
+            
+            # Update file path in metadata table
+            cursor.execute("""
+                UPDATE docs_meta 
+                SET file_path = ?
+                WHERE file_path = ?
+            """, (new_path, old_path))
+            
+            self.conn.commit()
+            return True
+            
+        except Exception as e:
+            print(f"Error updating file path from {old_path} to {new_path}: {e}")
+            self.conn.rollback()
+            return False
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         Get database statistics.
