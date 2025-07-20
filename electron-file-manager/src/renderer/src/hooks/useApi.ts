@@ -36,7 +36,7 @@ export interface UpdateFilePathResponse {
 }
 
 export const useApi = () => {
-  const makeRequest = useCallback(async (options: any) => {
+  const makeRequest = useCallback(async (options: unknown) => {
     try {
       return await window.electronAPI.api.request(options)
     } catch (error) {
@@ -58,7 +58,7 @@ export const useApi = () => {
       method: 'POST',
       url: '/search',
       data: options
-    })
+    }) as SearchResult
   }, [makeRequest])
 
   const advancedSearch = useCallback(async (options: AdvancedSearchOptions): Promise<SearchResult> => {
@@ -66,7 +66,7 @@ export const useApi = () => {
       method: 'POST',
       url: '/search/advanced',
       data: options
-    })
+    }) as SearchResult
   }, [makeRequest])
 
   const indexDirectory = useCallback(async (options: IndexOptions): Promise<IndexResult> => {
@@ -74,35 +74,35 @@ export const useApi = () => {
       method: 'POST',
       url: '/index',
       data: options
-    })
+    }) as IndexResult
   }, [makeRequest])
 
   const getStats = useCallback(async (): Promise<DatabaseStats> => {
     return await makeRequest({
       method: 'GET',
       url: '/stats'
-    })
+    }) as DatabaseStats
   }, [makeRequest])
 
   const getSupportedFormats = useCallback(async (): Promise<SupportedFormatsResponse> => {
     return await makeRequest({
       method: 'GET',
       url: '/supported-formats'
-    })
+    }) as SupportedFormatsResponse
   }, [makeRequest])
 
   const clearIndex = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     return await makeRequest({
       method: 'DELETE',
       url: '/index?confirm=true'
-    })
+    }) as { success: boolean; message: string }
   }, [makeRequest])
 
   const healthCheck = useCallback(async (): Promise<{ status: string }> => {
     return await makeRequest({
       method: 'GET',
       url: '/health'
-    })
+    }) as { status: string }
   }, [makeRequest])
 
   const getFileContent = useCallback(async (filePath: string): Promise<FileContentResponse> => {
@@ -110,7 +110,7 @@ export const useApi = () => {
       method: 'POST',
       url: '/file/content',
       data: { file_path: filePath }
-    })
+    }) as FileContentResponse
   }, [makeRequest])
 
   const removeFileFromIndex = useCallback(async (filePath: string): Promise<RemoveFileResponse> => {
@@ -118,7 +118,7 @@ export const useApi = () => {
       method: 'DELETE',
       url: '/file',
       data: { file_path: filePath }
-    })
+    }) as RemoveFileResponse
   }, [makeRequest])
 
   const updateFilePath = useCallback(async (oldPath: string, newPath: string): Promise<UpdateFilePathResponse> => {
@@ -126,28 +126,10 @@ export const useApi = () => {
       method: 'PUT',
       url: '/file/path',
       data: { old_path: oldPath, new_path: newPath }
-    })
+    }) as UpdateFilePathResponse
   }, [makeRequest])
 
   // LLM-related functions
-  const summarizeFileContent = useCallback(async (filePath: string): Promise<string> => {
-    try {
-      // 1. Get file content from the backend
-      const fileContentResponse = await getFileContent(filePath)
-      
-      if (!fileContentResponse.success || !fileContentResponse.content) {
-        throw new Error(fileContentResponse.error || 'Failed to get file content')
-      }
-
-      // 2. Use LLM to summarize the content
-      const summary = await llmWrapper.summarizeFile(fileContentResponse.content)
-      
-      return summary
-    } catch (error) {
-      console.error('Failed to summarize file content:', error)
-      throw error
-    }
-  }, [getFileContent])
 
   const chatWithAssistant = useCallback(async (query: string): Promise<{
     response: string
@@ -162,7 +144,8 @@ export const useApi = () => {
         search({ 
           query: keywords.join(' '), 
           search_type: 'hybrid',
-          limit: 10 
+          limit: 10,
+          min_fuzzy_score: 30
         })
       )
       const searchResults = await Promise.all(searchPromises)
@@ -192,47 +175,289 @@ export const useApi = () => {
     }
   }, [search])
 
-  const streamChatWithAssistant = useCallback(async (query: string): Promise<{
-    stream: ReadableStream<string>
-    getRecommendedFiles: () => Promise<FileItem[]>
+  // Streaming version of summarizeFileContent
+  const streamSummarizeFileContent = useCallback(async (filePath: string): Promise<ReadableStream<string>> => {
+    try {
+      // 1. Get file content from the backend
+      const fileContentResponse = await getFileContent(filePath)
+      
+      if (!fileContentResponse.success || !fileContentResponse.content) {
+        throw new Error(fileContentResponse.error || 'Failed to get file content')
+      }
+
+      // 2. Use LLM to summarize the content with streaming
+      const stream = await llmWrapper.streamSummarizeFile(fileContentResponse.content)
+      
+      return stream
+    } catch (error) {
+      console.error('Failed to summarize file content:', error)
+      throw error
+    }
+  }, [getFileContent])
+
+  const intelligentFileSearch = useCallback(async (query: string): Promise<{
+    files: FileItem[]
+    keywordGroups: string[][]
+    searchDetails: Array<{
+      keyword: string
+      foundFiles: string[]
+    }>
   }> => {
     try {
-      // First, get file recommendations in the background
-      const recommendationPromise = chatWithAssistant(query)
+      // 1. Extract keyword combinations using LLM
+      console.log('Extracting keywords for query:', query)
+      const keywordGroups = await llmWrapper.extractKeywords(query)
+      console.log('Extracted keyword groups:', keywordGroups)
 
-      // Create a streaming chat response
-      const messages = [
-        {
-          role: 'system' as const,
-          content: `你是一个智能文件搜索助手。用户提出关于文件搜索的问题，你需要：
-
-1. 理解用户的需求
-2. 提供有帮助的回答
-3. 解释搜索策略
-4. 给出建议
-
-请用友好、专业的中文回复，保持对话自然流畅。`
-        },
-        {
-          role: 'user' as const,
-          content: query
+      // 2. Perform exact searches with complete keyword combinations only
+      const searchDetails: Array<{ keyword: string; foundFiles: string[] }> = []
+      
+      const searchResults = await Promise.all(keywordGroups.map(async (keywords) => {
+        try {
+          // Use hybrid search with the complete keyword combination (no splitting)
+          const hybridQuery = keywords.join(' ')
+          const keywordLabel = keywords.join(' + ')
+          console.log(`Searching with hybrid query: "${hybridQuery}"`)
+          
+          const hybridResult = await search({
+            query: hybridQuery,
+            search_type: 'hybrid',
+            limit: 15,
+            min_fuzzy_score: 60
+          })
+          
+          if (hybridResult.success && hybridResult.results.length > 0) {
+            const foundFiles = hybridResult.results.map(f => f.file_path)
+            searchDetails.push({ keyword: keywordLabel, foundFiles })
+            
+            const resultsWithKeyword = hybridResult.results.map(file => ({
+              ...file,
+              foundByKeyword: keywordLabel
+            }))
+            
+            console.log(`Found ${hybridResult.results.length} files for keyword combination: "${keywordLabel}"`)
+            return resultsWithKeyword
+          } else {
+            console.log(`No files found for keyword combination: "${keywordLabel}"`)
+            return []
+          }
+        } catch (searchError) {
+          console.warn('Search failed for keyword combination:', keywords, searchError)
+          return []
         }
-      ]
+      }))
+      
+      const allResults = searchResults.flat()
 
-      const stream = await llmWrapper.streamChat({ messages })
+      // 3. Merge duplicate files and collect all their matching keywords
+      const fileMap = new Map<string, FileItem & { foundByKeyword?: string }>()
+      
+      allResults.forEach(file => {
+        const existingFile = fileMap.get(file.file_path)
+        if (existingFile) {
+          // File already exists, merge keywords
+          const existingKeywords = existingFile.foundByKeyword ? existingFile.foundByKeyword.split(' + ') : []
+          const newKeywords = file.foundByKeyword ? file.foundByKeyword.split(' + ') : []
+          const allKeywords = [...new Set([...existingKeywords, ...newKeywords])]
+          
+          // Sort keywords by Chinese pinyin for consistency
+          const sortedKeywords = allKeywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+          
+          // Keep the higher match score
+          existingFile.foundByKeyword = sortedKeywords.join(' + ')
+          existingFile.match_score = Math.max(existingFile.match_score || 0, file.match_score || 0)
+        } else {
+          // New file, sort keywords before adding to map
+          if (file.foundByKeyword) {
+            const keywords = file.foundByKeyword.split(' + ')
+            const sortedKeywords = keywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+            file.foundByKeyword = sortedKeywords.join(' + ')
+          }
+          fileMap.set(file.file_path, file)
+        }
+      })
+      
+      const uniqueResults = Array.from(fileMap.values())
+
+      // 4. Sort by match score (highest first) and limit results
+      const sortedResults = uniqueResults
+        .sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
+        .slice(0, 20)
+
+      console.log(`Found ${sortedResults.length} unique files from query: "${query}"`)
+      return {
+        files: sortedResults,
+        keywordGroups,
+        searchDetails
+      }
+
+    } catch (error) {
+      console.error('Failed to perform intelligent file search:', error)
+      throw error
+    }
+  }, [search])
+
+  const streamChatWithAssistant = useCallback(async (query: string, onProgress?: (message: string) => void): Promise<{
+    stream: ReadableStream<string>
+    getRecommendedFiles: () => Promise<FileItem[]>
+    getExtractedKeywords: () => Promise<string[]>
+  }> => {
+    try {
+      // Use the new intelligent file search with progress callbacks
+      const recommendationPromise = (async () => {
+        try {
+          onProgress?.('🔍 开始关键词提取...\n')
+          onProgress?.('📝 分析用户查询语义...\n')
+          
+          // Extract keywords with progress
+          const keywordGroups = await llmWrapper.extractKeywords(query)
+          onProgress?.(`💡 提取到 ${keywordGroups.length} 个关键词组合\n`)
+          keywordGroups.forEach((group, idx) => {
+            onProgress?.(`  ${idx + 1}. ${group.join(' + ')}\n`)
+          })
+
+          const searchDetails: Array<{ keyword: string; foundFiles: string[] }> = []
+          
+          onProgress?.('🎯 开始全文搜索...\n')
+
+          const searchResults = await Promise.all(keywordGroups.map(async (keywords) => {
+            try {
+              const hybridQuery = keywords.join(' ')
+              const keywordLabel = keywords.join(' + ')
+              
+              onProgress?.(`🔍 搜索关键词组合: "${keywordLabel}"\n`)
+              
+              const hybridResult = await search({
+                query: hybridQuery,
+                search_type: 'hybrid',
+                limit: 15,
+                min_fuzzy_score: 60
+              })
+              
+              if (hybridResult.success && hybridResult.results.length > 0) {
+                const foundFiles = hybridResult.results.map(f => f.file_path)
+                searchDetails.push({ keyword: keywordLabel, foundFiles })
+                
+                onProgress?.(`✅ 找到 ${hybridResult.results.length} 个匹配文件\n`)
+                
+                const resultsWithKeyword = hybridResult.results.map(file => ({
+                  ...file,
+                  foundByKeyword: keywordLabel
+                }))
+                
+                return resultsWithKeyword
+              } else {
+                onProgress?.(`⚠️  关键词组合 "${keywordLabel}" 未找到匹配文件\n`)
+                return []
+              }
+            } catch (searchError) {
+              onProgress?.(`❌ 搜索关键词组合失败: ${keywords}\n`)
+              return []
+            }
+          }))
+          
+          onProgress?.('📊 计算匹配度评分和去重...\n')
+
+          const allResults = searchResults.flat()
+
+          // Merge duplicate files and collect all their matching keywords
+          const fileMap = new Map<string, FileItem & { foundByKeyword?: string }>()
+          
+          allResults.forEach(file => {
+            const existingFile = fileMap.get(file.file_path)
+            if (existingFile) {
+              const existingKeywords = existingFile.foundByKeyword ? existingFile.foundByKeyword.split(' + ') : []
+              const newKeywords = file.foundByKeyword ? file.foundByKeyword.split(' + ') : []
+              const allKeywords = [...new Set([...existingKeywords, ...newKeywords])]
+              
+              const sortedKeywords = allKeywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+              
+              existingFile.foundByKeyword = sortedKeywords.join(' + ')
+              existingFile.match_score = Math.max(existingFile.match_score || 0, file.match_score || 0)
+            } else {
+              if (file.foundByKeyword) {
+                const keywords = file.foundByKeyword.split(' + ')
+                const sortedKeywords = keywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+                file.foundByKeyword = sortedKeywords.join(' + ')
+              }
+              fileMap.set(file.file_path, file)
+            }
+          })
+          
+          const uniqueResults = Array.from(fileMap.values())
+          const sortedResults = uniqueResults
+            .sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
+            .slice(0, 20)
+
+          onProgress?.(`✨ 完成搜索，共找到 ${sortedResults.length} 个相关文件\n`)
+
+          return {
+            files: sortedResults,
+            keywordGroups,
+            searchDetails
+          }
+        } catch (error) {
+          onProgress?.(`❌ 搜索失败: ${error}\n`)
+          throw error
+        }
+      })()
+
+      // Create a more detailed confirmation stream with keyword information
+      const stream = new ReadableStream<string>({
+        async start(controller) {
+          setTimeout(async () => {
+            try {
+              const result = await recommendationPromise
+              
+              // Show extracted keywords section
+              controller.enqueue('### 📝 检索关键词组合\n\n')
+              result.keywordGroups.forEach((group, index) => {
+                controller.enqueue(`${index + 1}. \`${group.join(' + ')}\`\n`)
+              })
+              controller.enqueue('\n---\n\n')
+              
+              // Show search results summary
+              controller.enqueue(`### 📁 搜索结果概览：✅ **找到 ${result.files.length} 个相关文件**\n\n`)
+              
+              // Show search details as markdown table
+              if (result.searchDetails.length > 0) {
+                controller.enqueue('---\n\n')
+                controller.enqueue('### 📊 关键词匹配详情\n\n')
+                controller.enqueue('| 关键词 | 文件数 |\n')
+                controller.enqueue('|--------|------------|\n')
+                
+                result.searchDetails.forEach(detail => {
+                  controller.enqueue(`| \`${detail.keyword}\` | ${detail.foundFiles.length} |\n`)
+                })
+                controller.enqueue('\n---\n\n')
+                controller.enqueue('💡 **提示：** 每个推荐文件都标注了匹配的关键词，点击可直接打开查看。\n')
+              }
+              
+              controller.close()
+            } catch (error) {
+              controller.enqueue('❌ **搜索分析失败**\n\n请重试或检查搜索条件。')
+              controller.close()
+            }
+          }, 300)
+        }
+      })
 
       return {
         stream,
         getRecommendedFiles: async () => {
           const result = await recommendationPromise
-          return result.recommendedFiles
+          return result.files
+        },
+        getExtractedKeywords: async () => {
+          const result = await recommendationPromise
+          return result.keywordGroups.flat()
         }
       }
     } catch (error) {
       console.error('Failed to stream chat with assistant:', error)
       throw error
     }
-  }, [chatWithAssistant])
+  }, [intelligentFileSearch])
 
   return {
     search,
@@ -246,7 +471,7 @@ export const useApi = () => {
     removeFileFromIndex,
     updateFilePath,
     // LLM functions
-    summarizeFileContent,
+    streamSummarizeFileContent,
     chatWithAssistant,
     streamChatWithAssistant
   }

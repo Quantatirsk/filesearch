@@ -13,19 +13,22 @@ import { Separator } from './ui/separator'
 import { useAppStore } from '../stores/app-store'
 import { useApi } from '../hooks/useApi'
 import { SettingsDialog } from './SettingsDialog'
+import { SearchBar } from './SearchBar'
 
 interface ToolbarProps {
   onSelectDirectory: () => void
   onCopyFiles: () => void
   onDeleteFiles: () => void
   onOpenChatAssistant: () => void
+  onSearch?: (query: string, type: string) => void
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectDirectory,
   onCopyFiles,
   onDeleteFiles,
-  onOpenChatAssistant
+  onOpenChatAssistant,
+  onSearch
 }) => {
   const { 
     isBackendRunning, 
@@ -62,9 +65,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const isAllSelected = searchResults.length > 0 && selectedFiles.length === searchResults.length
 
   return (
-    <div className="toolbar flex items-center justify-between px-3 py-1.5 bg-card border-b border-border">
-      <div className="flex items-center space-x-1.5">
+    <div className="toolbar flex items-center justify-between px-2 py-1 bg-card border-b border-border">
+      {/* Left section - Search Bar */}
+      <div className="flex-1">
+        <SearchBar onSearch={onSearch} />
+      </div>
 
+      {/* Center section - Operation Buttons */}
+      <div className="flex items-center space-x-1 mx-4">
         {/* Directory operations */}
         <Button
           variant="outline"
@@ -128,7 +136,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </Button>
       </div>
 
-      <div className="flex items-center space-x-1.5">
+      {/* Right section */}
+      <div className="flex items-center space-x-1 flex-shrink-0">
         {/* Smart Assistant */}
         <Button
           variant="outline"

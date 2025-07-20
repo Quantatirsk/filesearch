@@ -39,7 +39,7 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="消息内容")
 
 class ChatCompletionRequest(BaseModel):
-    model: str = Field(default="gpt-3.5-turbo", description="模型名称")
+    model: str = Field(default="gpt-4.1-mini", description="模型名称")
     messages: List[ChatMessage] = Field(..., description="对话消息列表")
     stream: bool = Field(default=False, description="是否流式返回")
     max_tokens: Optional[int] = Field(default=None, description="最大token数")
@@ -239,7 +239,7 @@ POST /v1/chat/completions
 Content-Type: application/json
 
 {
-  "model": "gpt-3.5-turbo",
+  "model": "gpt-4.1-mini",
   "messages": [
     {"role": "system", "content": "你是一个文件搜索助手..."},
     {"role": "user", "content": "帮我找一些关于机器学习的文档"}

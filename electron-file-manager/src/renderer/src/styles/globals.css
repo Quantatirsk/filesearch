@@ -58,21 +58,58 @@
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - reduced size */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-secondary;
+  @apply bg-secondary/50;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground rounded-md;
+  @apply bg-muted-foreground/70 rounded-md;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-foreground;
+  @apply bg-muted-foreground;
+}
+
+::-webkit-scrollbar-corner {
+  @apply bg-secondary/50;
+}
+
+/* Utility class to hide scrollbars */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Utility class for thin scrollbars */
+.scrollbar-thin {
+  scrollbar-width: thin;  /* Firefox */
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/50 rounded-full;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/80;
 }
 
 /* File manager specific styles */
@@ -97,7 +134,7 @@
 }
 
 .toolbar {
-  @apply h-12 bg-card border-b border-border flex items-center px-4;
+  @apply h-12 bg-card border-b border-border flex items-center px-2;
 }
 
 .status-bar {

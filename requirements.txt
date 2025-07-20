@@ -30,7 +30,7 @@ uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 
 # LLM integration
-openai>=1.0.0
-python-dotenv>=1.0.0
+openai>=1.97.0
+python-dotenv>=1.1.1
 
 jieba

@@ -42,7 +42,7 @@ export const FolderNameDialog: React.FC<FolderNameDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onCancel()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100vw-4rem)] max-w-md">
         <DialogHeader>
           <DialogTitle>确认文件夹名称</DialogTitle>
         </DialogHeader>

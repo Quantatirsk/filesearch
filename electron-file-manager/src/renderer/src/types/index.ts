@@ -8,6 +8,7 @@ export interface FileItem {
   content_preview?: string
   match_score?: number
   highlighted_content?: string
+  foundByKeyword?: string
 }
 
 export interface SearchResult {

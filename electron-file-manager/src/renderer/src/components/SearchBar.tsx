@@ -77,36 +77,36 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
   }, [executeSearch, isComposing])
 
   return (
-    <div className="flex items-center gap-3 w-full">
+    <div className="flex items-center gap-2 w-full">
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-3 w-3" />
         <Input
           ref={inputRef}
-          placeholder={isBackendRunning ? "搜索文件 (支持多个关键词，空格分隔) - 按Enter或点击搜索按钮..." : "请先启动Python后端服务..."}
+          placeholder={isBackendRunning ? "搜索文件 (支持多个关键词，空格分隔) - 按Enter或点击搜索按钮..." : "请先启动后端服务..."}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          className="pl-10 pr-10"
+          className="pl-8 pr-8 h-7 text-xs"
           disabled={localSearching || !isBackendRunning}
         />
         {localSearching ? (
-          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin" />
+          <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 animate-spin" />
         ) : (
           <Button
             size="sm"
             onClick={executeSearch}
             disabled={!inputValue.trim() || !isBackendRunning}
-            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 px-3"
+            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-5 px-1.5"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-3 w-3" />
           </Button>
         )}
       </div>
       
       <Select value={searchType} onValueChange={handleTypeChange} disabled={!isBackendRunning}>
-        <SelectTrigger className="w-36">
+        <SelectTrigger className="w-24 h-7 text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -147,6 +147,14 @@ function setupIpcHandlers(): void {
     return await fileOperations.openInExplorer(filePath)
   })
 
+  ipcMain.handle('files:get-desktop-path', async () => {
+    return await fileOperations.getDesktopPath()
+  })
+
+  ipcMain.handle('files:create-directory', async (_, dirPath: string) => {
+    return await fileOperations.createDirectory(dirPath)
+  })
+
   // API communication
   ipcMain.handle('api:request', async (_, options: any) => {
     return await pythonBridge.makeApiRequest(options)

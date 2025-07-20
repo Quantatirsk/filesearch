@@ -1,42 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { CustomElectronAPI } from '../types/electron'
 
-// Custom APIs for renderer
-export interface ElectronAPI {
-  // Python backend
-  python: {
-    start: () => Promise<{ success: boolean; message: string }>
-    stop: () => Promise<{ success: boolean; message: string }>
-    status: () => Promise<boolean>
-  }
-  
-  // File operations
-  files: {
-    selectDirectory: () => Promise<string | null>
-    copy: (files: string[], destination: string) => Promise<{ success: boolean; message: string; results?: any[] }>
-    copyToClipboard: (files: string[]) => Promise<{ success: boolean; message: string; results?: any[] }>
-    move: (files: string[], destination: string) => Promise<{ success: boolean; message: string; results?: any[] }>
-    rename: (oldPath: string, newPath: string) => Promise<{ success: boolean; message: string }>
-    delete: (files: string[]) => Promise<{ success: boolean; message: string; results?: any[] }>
-    openFile: (filePath: string) => Promise<{ success: boolean; message: string }>
-    openInExplorer: (filePath: string) => Promise<{ success: boolean; message: string }>
-  }
-  
-  // API requests
-  api: {
-    request: (options: any) => Promise<any>
-  }
-  
-  // Settings management
-  settings: {
-    load: () => Promise<any>
-    save: (settings: any) => Promise<void>
-    get: () => Promise<any>
-    reset: () => Promise<any>
-  }
-}
-
-const api: ElectronAPI = {
+// Implementation of custom APIs for renderer
+const customElectronAPI: CustomElectronAPI = {
   python: {
     start: () => ipcRenderer.invoke('python:start'),
     stop: () => ipcRenderer.invoke('python:stop'),
@@ -50,14 +17,16 @@ const api: ElectronAPI = {
     rename: (oldPath: string, newPath: string) => ipcRenderer.invoke('files:rename', oldPath, newPath),
     delete: (files: string[]) => ipcRenderer.invoke('files:delete', files),
     openFile: (filePath: string) => ipcRenderer.invoke('files:open-file', filePath),
-    openInExplorer: (filePath: string) => ipcRenderer.invoke('files:open-in-explorer', filePath)
+    openInExplorer: (filePath: string) => ipcRenderer.invoke('files:open-in-explorer', filePath),
+    getDesktopPath: () => ipcRenderer.invoke('files:get-desktop-path'),
+    createDirectory: (dirPath: string) => ipcRenderer.invoke('files:create-directory', dirPath)
   },
   api: {
-    request: (options: any) => ipcRenderer.invoke('api:request', options)
+    request: (options: unknown) => ipcRenderer.invoke('api:request', options)
   },
   settings: {
     load: () => ipcRenderer.invoke('settings:load'),
-    save: (settings: any) => ipcRenderer.invoke('settings:save', settings),
+    save: (settings: unknown) => ipcRenderer.invoke('settings:save', settings),
     get: () => ipcRenderer.invoke('settings:get'),
     reset: () => ipcRenderer.invoke('settings:reset')
   }
@@ -69,7 +38,7 @@ const api: ElectronAPI = {
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('electronAPI', api)
+    contextBridge.exposeInMainWorld('electronAPI', customElectronAPI)
   } catch (error) {
     console.error(error)
   }
@@ -77,7 +46,7 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.electron = electronAPI
   // @ts-ignore (define in dts)
-  window.electronAPI = api
+  window.electronAPI = customElectronAPI
 }
 
 export { electronAPI }

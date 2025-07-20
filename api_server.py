@@ -116,7 +116,7 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="Message content")
 
 class ChatCompletionRequest(BaseModel):
-    model: str = Field(default="gpt-3.5-turbo", description="Model name")
+    model: str = Field(default="gpt-4.1-mini", description="Model name")
     messages: List[ChatMessage] = Field(..., description="List of messages")
     stream: bool = Field(default=False, description="Whether to stream the response")
     max_tokens: Optional[int] = Field(default=None, description="Maximum number of tokens")
@@ -827,9 +827,19 @@ async def chat_completions(request: ChatCompletionRequest):
                                     "finish_reason": choice.finish_reason
                                 }]
                             }
+                            chunk_content = choice.delta.content if choice.delta and choice.delta.content else ""
+                            if chunk_content:
+                                print(f"[API] Streaming chunk: {repr(chunk_content)}")
+                            
                             yield f"data: {json.dumps(stream_data)}\n\n"
+                            
+                            # Add a small delay to ensure proper streaming behavior
+                            await asyncio.sleep(0.01)
+                    
+                    print("[API] Stream completed, sending [DONE]")
                     yield "data: [DONE]\n\n"
                 except Exception as e:
+                    print(f"[API] Stream error: {e}")
                     error_data = {
                         "error": {
                             "message": str(e),
@@ -841,7 +851,11 @@ async def chat_completions(request: ChatCompletionRequest):
             return StreamingResponse(
                 generate_stream(),
                 media_type="text/plain",
-                headers={"Cache-Control": "no-cache"}
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Content-Type": "text/plain; charset=utf-8"
+                }
             )
         else:
             # Non-streaming response
