@@ -19,35 +19,124 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: write
+      statuses: write
+      deployments: read
+      packages: read
+      security-events: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
-
+          fetch-depth: 0  # 获取完整历史记录
+          
+      - name: Setup Node.js (如果需要 MCP)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - name: Setup Python (如果需要 Python 工具)
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          # 安装项目依赖
+          if [ -f "package.json" ]; then npm ci; fi
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+  
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@beta
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # This is an optional setting that allows Claude to read CI results on PRs
+          # 启用网络搜索和常用工具
+          allowed_tools: |
+            WebFetch(https://google.com/*),
+            WebFetch(https://www.google.com/*),
+            WebFetch(https://duckduckgo.com/*),
+            WebFetch(https://stackoverflow.com/*),
+            WebFetch(https://github.com/*),
+            WebFetch(https://docs.github.com/*),
+            WebFetch(https://developer.mozilla.org/*),
+            WebFetch(https://docs.python.org/*),
+            WebFetch(https://nodejs.org/*),
+            WebFetch(https://reactjs.org/*),
+            WebFetch(https://react.dev/*),
+            WebFetch(https://vuejs.org/*),
+            WebFetch(https://docs.docker.com/*),
+            WebFetch(https://kubernetes.io/*),
+            WebFetch(https://docs.aws.amazon.com/*),
+            WebFetch(https://docs.microsoft.com/*),
+            WebFetch(https://cloud.google.com/*),
+            WebFetch(https://dev.to/*),
+            WebFetch(https://medium.com/*),
+            WebFetch(https://news.ycombinator.com/*),
+            WebFetch(https://www.npmjs.com/*),
+            WebFetch(https://pypi.org/*),
+            WebFetch(https://crates.io/*),
+            WebFetch(https://go.dev/*),
+            WebFetch(https://docs.rust-lang.org/*),
+            WebFetch(https://git-scm.com/*),
+            WebFetch(https://www.atlassian.com/git/*),
+            WebFetch(https://docs.gitlab.com/*),
+            WebFetch(https://fastapi.tiangolo.com/*),
+            WebFetch(https://expressjs.com/*),
+            Bash(python main.py *),
+            Bash(pip install *),
+            Bash(npm install),
+            Bash(npm run *),
+            Bash(git status),
+            Bash(git diff),
+            Read(*),
+            Write(*),
+            Edit(*),
+            Glob(*),
+            Grep(*)
+          
+          # 增强权限
           additional_permissions: |
             actions: read
+            checks: write
+          
+          # 自定义指令，说明网络搜索的用途
+          custom_instructions: |
+            你是这个项目的 AI 助手，具有以下增强功能：
+            
+            ## 权限和能力
+            - 可以读写文件和创建 PR
+            - 可以执行构建、测试和部署命令
+            - 可以搜索网络获取最新文档和解决方案
+            - 可以通过 MCP 访问 GitHub API 和文件系统
+            
+            ## 工作流程
+            1. 分析问题并制定计划
+            2. 使用网络搜索查找最新信息（如需要）
+            3. 实施解决方案
+            4. 运行测试确保质量
+            5. 提供详细的变更说明
+            
+            ## 特殊指令
+            - 遵循项目的 CLAUDE.md 中的开发规范
+            - 在修改代码前先运行测试
+            - 使用网络搜索获取最新的 API 文档
+            - 优先使用项目已有的依赖和工具
+          
           
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
           # model: "claude-opus-4-20250514"
           
           # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
+          trigger_phrase: "@cc"
           
           # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
+          assignee_trigger: "claude-bot"
           
           # Optional: Allow Claude to run specific commands
           # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
