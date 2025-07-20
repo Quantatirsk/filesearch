@@ -33,7 +33,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史记录
+          fetch-depth: 1
   
       - name: Run Claude Code
         id: claude
@@ -86,31 +86,9 @@ jobs:
           
           # 增强权限
           additional_permissions: |
-            actions: read
+            actions: write
             checks: write
           
-          # 自定义指令，说明网络搜索的用途
-          custom_instructions: |
-            你是这个项目的 AI 助手，具有以下增强功能：
-            
-            ## 权限和能力
-            - 可以读写文件和创建 PR
-            - 可以执行构建、测试和部署命令
-            - 可以搜索网络获取最新文档和解决方案
-            - 可以通过 MCP 访问 GitHub API 和文件系统
-            
-            ## 工作流程
-            1. 分析问题并制定计划
-            2. 使用网络搜索查找最新信息（如需要）
-            3. 实施解决方案
-            4. 运行测试确保质量
-            5. 提供详细的变更说明
-            
-            ## 特殊指令
-            - 遵循项目的 CLAUDE.md 中的开发规范
-            - 在修改代码前先运行测试
-            - 使用网络搜索获取最新的 API 文档
-            - 优先使用项目已有的依赖和工具
           
           
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
