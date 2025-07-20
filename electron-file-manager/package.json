@@ -1,10 +1,10 @@
 {
   "name": "electron-file-manager",
   "version": "1.0.0",
-  "description": "高性能文件搜索管理器",
+  "description": "高性能文件检索系统",
   "main": "out/main/index.js",
   "private": true,
-  "author": "Your Name",
+  "author": "Quant",
   "homepage": "./",
   "scripts": {
     "dev": "electron-vite dev",
@@ -81,10 +81,7 @@
     "directories": {
       "output": "dist"
     },
-    "files": [
-      "dist-electron",
-      "dist"
-    ],
+    "files": ["out/**/*", "resources/**/*"],
     "mac": {
       "category": "public.app-category.productivity"
     },
