@@ -1,4 +1,5 @@
-import React, { useCallback, useState, useEffect, useMemo } from 'react'
+import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { FileItem } from '../types'
 import { useAppStore } from '../stores/app-store'
 import { useApi } from '../hooks/useApi'
@@ -8,14 +9,7 @@ import { Checkbox } from './ui/checkbox'
 import { PreviewDialog } from './PreviewDialog'
 import { Button } from './ui/button'
 import { toast } from 'sonner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './ui/table'
+// Table components are no longer needed - using flex layout
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +52,12 @@ interface FileListProps {
   containerRef: React.RefObject<HTMLDivElement>
 }
 
+const ROW_HEIGHT = 46 // 调整行高到 46px，紧凑的间距
+
 export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) => {
+  // 虚拟化容器引用
+  const virtualScrollRef = useRef<HTMLDivElement>(null)
+  
   // API hooks
   const { removeFileFromIndex, updateFilePath, streamSummarizeFileContent } = useApi()
   
@@ -82,6 +81,29 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     appState.searchResults.length > 0 && appState.selectedFiles.length === appState.searchResults.length,
     [appState.searchResults.length, appState.selectedFiles.length]
   )
+  
+  // 虚拟化配置
+  const virtualizer = useVirtualizer({
+    count: appState.searchResults.length,
+    getScrollElement: () => virtualScrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10, // 预渲染 10 行以提升滚动体验
+  })
+
+  // 动态计算滚动条宽度
+  const [scrollbarWidth, setScrollbarWidth] = useState(0)
+  
+  useEffect(() => {
+    if (virtualScrollRef.current) {
+      const scrollbarWidth = virtualScrollRef.current.offsetWidth - virtualScrollRef.current.clientWidth
+      setScrollbarWidth(scrollbarWidth)
+    }
+  }, [appState.searchResults.length])
+
+  // 强制重新测量所有项目以应用新的行高
+  useEffect(() => {
+    virtualizer.measure()
+  }, [ROW_HEIGHT, virtualizer])
 
   // Preview dialog state
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null)
@@ -358,8 +380,8 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     }
   }, [removeFileFromIndex])
 
-  // 优化的单行组件 - 减少重渲染
-  const OptimizedTableRow = React.memo(({ 
+  // 优化的行组件 - 使用 flex 布局替代表格，实现完全紧凑的布局
+  const OptimizedTableCells = React.memo(({ 
     file, 
     isSelected, 
     onCheckboxChange 
@@ -368,64 +390,61 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     isSelected: boolean,
     onCheckboxChange: (filePath: string, checked: boolean) => void
   }) => (
-    <TableRow
-      className={cn(
-        "hover:bg-muted/50 h-8",
-        isSelected && "bg-primary/5"
-      )}
-    >
-      <TableCell className="w-8 p-1 text-center">
+    <>
+      {/* 勾选框列 */}
+      <div className="px-1 py-0.5 flex items-center justify-center border-r border-border/20">
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onCheckboxChange(file.file_path, checked as boolean)}
         />
-      </TableCell>
+      </div>
       
-      <TableCell className="p-1">
-        <div className="flex items-center space-x-1 min-w-0">
+      {/* 文件信息列 */}
+      <div className="px-2 py-0.5 min-w-0 flex items-center border-r border-border/20">
+        <div className="flex items-center space-x-1.5 min-w-0 w-full">
           <div className="text-sm flex-shrink-0">
             {getFileIcon(file.file_type)}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm truncate leading-tight">
+            <div className="font-medium text-sm truncate leading-none">
               {file.file_name}
             </div>
-            <div className="text-xs text-muted-foreground truncate leading-tight">
+            <div className="text-xs text-muted-foreground truncate leading-none opacity-70">
               {file.file_path}
             </div>
-            {file.content_preview && (
-              <div className="text-xs text-muted-foreground truncate opacity-75 leading-tight">
-                {file.content_preview}
-              </div>
-            )}
           </div>
         </div>
-      </TableCell>
+      </div>
       
-      <TableCell className="p-1">
-        <span className="text-xs bg-secondary/50 px-1 py-0.5 rounded">
+      {/* 类型列 */}
+      <div className="px-1 py-0.5 flex items-center justify-center border-r border-border/20">
+        <span className="text-xs bg-secondary/50 px-1 py-0.5 rounded text-center">
           {file.file_type.toUpperCase()}
         </span>
-      </TableCell>
+      </div>
       
-      <TableCell className="text-xs text-muted-foreground p-1">
+      {/* 大小列 */}
+      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20">
         {formatFileSize(file.file_size)}
-      </TableCell>
+      </div>
       
-      <TableCell className="text-xs text-muted-foreground p-1">
+      {/* 修改时间列 */}
+      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20">
         {formatDate(file.last_modified)}
-      </TableCell>
+      </div>
       
-      <TableCell className="p-1">
+      {/* 匹配度列 */}
+      <div className="px-1 py-0.5 flex items-center justify-center border-r border-border/20">
         <span className="text-xs bg-primary/10 text-primary px-1 py-0.5 rounded">
           {file.match_score ? Math.round(file.match_score) : 100}%
         </span>
-      </TableCell>
+      </div>
       
-      <TableCell className="p-1">
+      {/* 操作列 */}
+      <div className="px-1 py-0.5 flex items-center justify-center">
         <FileActions filePath={file.file_path} />
-      </TableCell>
-    </TableRow>
+      </div>
+    </>
   ))
 
   // 操作列组件 - 移除所有依赖，只传递必要的props
@@ -438,10 +457,10 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-6 w-6 p-0"
               onClick={() => handlePreviewClick(filePath)}
             >
-              <Eye className="h-4 w-4" />
+              <Eye className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -455,10 +474,10 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-6 w-6 p-0"
               onClick={() => handleSummarizeClick(filePath)}
             >
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -472,10 +491,10 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-6 w-6 p-0"
               onClick={(e) => handleOpenFile(filePath, e)}
             >
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -489,10 +508,10 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-6 w-6 p-0"
               onClick={() => handleCopyClick(filePath)}
             >
-              <Copy className="h-4 w-4" />
+              <Copy className="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -508,9 +527,9 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0"
+                  className="h-6 w-6 p-0"
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
@@ -566,48 +585,108 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* 表格容器 */}
+    <div ref={containerRef} className="h-full flex flex-col">
+      {/* 固定表头 - 使用与数据行相同的flex布局 */}
+      <div className="flex-shrink-0 border-b bg-background sticky top-0 z-10">
+        <div 
+          className="w-full border-b border-border/30 grid"
+          style={{ 
+            height: '36px',
+            gridTemplateColumns: '32px 1fr 80px 96px 128px 80px 160px', // 精确的列宽定义
+            paddingRight: `${scrollbarWidth}px` // 动态为滚动条预留空间
+          }}
+        >
+          {/* 勾选框列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            <Checkbox
+              checked={isAllSelected}
+              onCheckedChange={(checked) => {
+                if (checked) {
+                  appState.selectAllFiles()
+                } else {
+                  appState.clearSelection()
+                }
+              }}
+            />
+          </div>
+          
+          {/* 文件信息列表头 */}
+          <div className="px-2 py-0.5 flex items-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            文件
+          </div>
+          
+          {/* 类型列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            类型
+          </div>
+          
+          {/* 大小列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            大小
+          </div>
+          
+          {/* 修改时间列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            修改时间
+          </div>
+          
+          {/* 匹配度列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            匹配度
+          </div>
+          
+          {/* 操作列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground">
+            操作
+          </div>
+        </div>
+      </div>
+      
+      {/* 虚拟化滚动容器 */}
       <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        ref={virtualScrollRef}
+        className="flex-1 overflow-auto virtualized-container"
         onKeyDown={handleKeyDown}
         tabIndex={0}
+        style={{ contain: 'strict' }}
       >
-        <Table className="table-fixed w-full">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8 h-8 p-1 text-center">
-                <Checkbox
-                  checked={isAllSelected}
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      appState.selectAllFiles()
-                    } else {
-                      appState.clearSelection()
-                    }
-                  }}
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const file = appState.searchResults[virtualItem.index]
+            return (
+              <div
+                key={virtualItem.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${ROW_HEIGHT}px`, // 强制使用当前的 ROW_HEIGHT
+                  transform: `translateY(${virtualItem.start}px)`,
+                  display: 'grid',
+                  gridTemplateColumns: '32px 1fr 80px 96px 128px 80px 160px', // 与表头完全相同的列宽
+                  borderBottom: '1px solid hsl(var(--border))',
+                }}
+                className={cn(
+                  "hover:bg-muted/50",
+                  selectedFilesSet.has(file.file_path) && "bg-primary/5"
+                )}
+              >
+                <OptimizedTableCells
+                  file={file}
+                  isSelected={selectedFilesSet.has(file.file_path)}
+                  onCheckboxChange={handleCheckboxChange}
                 />
-              </TableHead>
-              <TableHead className="whitespace-nowrap h-8 p-1">文件</TableHead>
-              <TableHead className="w-20 whitespace-nowrap h-8 p-1">类型</TableHead>
-              <TableHead className="w-24 whitespace-nowrap h-8 p-1">大小</TableHead>
-              <TableHead className="w-32 whitespace-nowrap h-8 p-1">修改时间</TableHead>
-              <TableHead className="w-20 whitespace-nowrap h-8 p-1">匹配度</TableHead>
-              <TableHead className="w-40 whitespace-nowrap text-center h-8 p-1">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {appState.searchResults.map((file) => (
-              <OptimizedTableRow
-                key={file.file_path}
-                file={file}
-                isSelected={selectedFilesSet.has(file.file_path)}
-                onCheckboxChange={handleCheckboxChange}
-              />
-            ))}
-          </TableBody>
-        </Table>
+              </div>
+            )
+          })}
+        </div>
       </div>
       
       {/* Preview Dialog */}

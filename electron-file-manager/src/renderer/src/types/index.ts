@@ -24,7 +24,7 @@ export interface SearchResult {
 
 export interface SearchOptions {
   query: string
-  search_type: 'exact' | 'fuzzy' | 'path' | 'hybrid'
+  search_type: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
   limit: number
   min_fuzzy_score: number
   file_types?: string[]

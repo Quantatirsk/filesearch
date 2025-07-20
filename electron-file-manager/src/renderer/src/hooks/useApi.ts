@@ -139,15 +139,57 @@ export const useApi = () => {
       // 1. Extract keyword combinations using LLM
       const keywordSets = await llmWrapper.extractKeywords(query)
       
-      // 2. Search with multiple keyword combinations in parallel
-      const searchPromises = keywordSets.map(keywords => 
-        search({ 
-          query: keywords.join(' '), 
-          search_type: 'hybrid',
-          limit: 10,
-          min_fuzzy_score: 30
-        })
-      )
+      // 2. Search with multiple keyword combinations in parallel using quick search (exact + path)
+      const searchPromises = keywordSets.map(async keywords => {
+        const query = keywords.join(' ')
+        
+        // Execute exact and path searches in parallel
+        const [exactResult, pathResult] = await Promise.all([
+          search({ 
+            query, 
+            search_type: 'exact',
+            limit: 1000,
+            min_fuzzy_score: 30
+          }),
+          search({ 
+            query, 
+            search_type: 'path',
+            limit: 1000,
+            min_fuzzy_score: 30
+          })
+        ])
+        
+        // Merge and deduplicate results
+        const allResults: FileItem[] = []
+        const seenPaths = new Set<string>()
+        
+        // Add exact search results first (higher priority)
+        if (exactResult.success && exactResult.results) {
+          for (const item of exactResult.results) {
+            if (!seenPaths.has(item.file_path)) {
+              seenPaths.add(item.file_path)
+              allResults.push(item)
+            }
+          }
+        }
+        
+        // Add path search results
+        if (pathResult.success && pathResult.results) {
+          for (const item of pathResult.results) {
+            if (!seenPaths.has(item.file_path)) {
+              seenPaths.add(item.file_path)
+              allResults.push(item)
+            }
+          }
+        }
+        
+        return {
+          success: true,
+          results: allResults,
+          total_results: allResults.length,
+          search_time: (exactResult.search_time || 0) + (pathResult.search_time || 0)
+        }
+      })
       const searchResults = await Promise.all(searchPromises)
       
       // 3. Combine and deduplicate results
@@ -214,28 +256,61 @@ export const useApi = () => {
       
       const searchResults = await Promise.all(keywordGroups.map(async (keywords) => {
         try {
-          // Use hybrid search with the complete keyword combination (no splitting)
-          const hybridQuery = keywords.join(' ')
+          // Use quick search (exact + path) with the complete keyword combination
+          const quickQuery = keywords.join(' ')
           const keywordLabel = keywords.join(' + ')
-          console.log(`Searching with hybrid query: "${hybridQuery}"`)
+          console.log(`Searching with quick query: "${quickQuery}"`)
           
-          const hybridResult = await search({
-            query: hybridQuery,
-            search_type: 'hybrid',
-            limit: 15,
-            min_fuzzy_score: 60
-          })
+          // Execute exact and path searches in parallel
+          const [exactResult, pathResult] = await Promise.all([
+            search({
+              query: quickQuery,
+              search_type: 'exact',
+              limit: 1000,
+              min_fuzzy_score: 60
+            }),
+            search({
+              query: quickQuery,
+              search_type: 'path',
+              limit: 1000,
+              min_fuzzy_score: 60
+            })
+          ])
           
-          if (hybridResult.success && hybridResult.results.length > 0) {
-            const foundFiles = hybridResult.results.map(f => f.file_path)
+          // Merge and deduplicate results
+          const allResults: FileItem[] = []
+          const seenPaths = new Set<string>()
+          
+          // Add exact search results first (higher priority)
+          if (exactResult.success && exactResult.results) {
+            for (const item of exactResult.results) {
+              if (!seenPaths.has(item.file_path)) {
+                seenPaths.add(item.file_path)
+                allResults.push(item)
+              }
+            }
+          }
+          
+          // Add path search results
+          if (pathResult.success && pathResult.results) {
+            for (const item of pathResult.results) {
+              if (!seenPaths.has(item.file_path)) {
+                seenPaths.add(item.file_path)
+                allResults.push(item)
+              }
+            }
+          }
+          
+          if (allResults.length > 0) {
+            const foundFiles = allResults.map(f => f.file_path)
             searchDetails.push({ keyword: keywordLabel, foundFiles })
             
-            const resultsWithKeyword = hybridResult.results.map(file => ({
+            const resultsWithKeyword = allResults.map(file => ({
               ...file,
               foundByKeyword: keywordLabel
             }))
             
-            console.log(`Found ${hybridResult.results.length} files for keyword combination: "${keywordLabel}"`)
+            console.log(`Found ${allResults.length} files for keyword combination: "${keywordLabel}" (exact: ${exactResult.results?.length || 0}, path: ${pathResult.results?.length || 0})`)
             return resultsWithKeyword
           } else {
             console.log(`No files found for keyword combination: "${keywordLabel}"`)
@@ -322,25 +397,63 @@ export const useApi = () => {
 
           const searchResults = await Promise.all(keywordGroups.map(async (keywords) => {
             try {
-              const hybridQuery = keywords.join(' ')
+              const quickQuery = keywords.join(' ')
               const keywordLabel = keywords.join(' + ')
               
               onProgress?.(`🔍 搜索关键词组合: "${keywordLabel}"\n`)
               
-              const hybridResult = await search({
-                query: hybridQuery,
-                search_type: 'hybrid',
-                limit: 15,
-                min_fuzzy_score: 60
-              })
+              // Execute exact and path searches in parallel
+              const [exactResult, pathResult] = await Promise.all([
+                search({
+                  query: quickQuery,
+                  search_type: 'exact',
+                  limit: 1000,
+                  min_fuzzy_score: 60
+                }),
+                search({
+                  query: quickQuery,
+                  search_type: 'path',
+                  limit: 1000,
+                  min_fuzzy_score: 60
+                })
+              ])
               
-              if (hybridResult.success && hybridResult.results.length > 0) {
-                const foundFiles = hybridResult.results.map(f => f.file_path)
+              // Merge and deduplicate results
+              const allResults: FileItem[] = []
+              const seenPaths = new Set<string>()
+              
+              // Add exact search results first (higher priority)
+              if (exactResult.success && exactResult.results) {
+                for (const item of exactResult.results) {
+                  if (!seenPaths.has(item.file_path)) {
+                    seenPaths.add(item.file_path)
+                    allResults.push(item)
+                  }
+                }
+              }
+              
+              // Add path search results
+              if (pathResult.success && pathResult.results) {
+                for (const item of pathResult.results) {
+                  if (!seenPaths.has(item.file_path)) {
+                    seenPaths.add(item.file_path)
+                    allResults.push(item)
+                  }
+                }
+              }
+              
+              const exactCount = exactResult.results?.length || 0
+              const pathCount = pathResult.results?.length || 0
+              const totalBeforeDedup = exactCount + pathCount
+              const afterDedup = allResults.length
+              
+              if (allResults.length > 0) {
+                const foundFiles = allResults.map(f => f.file_path)
                 searchDetails.push({ keyword: keywordLabel, foundFiles })
                 
-                onProgress?.(`✅ 找到 ${hybridResult.results.length} 个匹配文件\n`)
+                onProgress?.(`✅ "${keywordLabel}" 找到 ${afterDedup} 个匹配文件 (精确: ${exactCount}, 路径: ${pathCount}, 去重: ${totalBeforeDedup - afterDedup})\n`)
                 
-                const resultsWithKeyword = hybridResult.results.map(file => ({
+                const resultsWithKeyword = allResults.map(file => ({
                   ...file,
                   foundByKeyword: keywordLabel
                 }))
@@ -370,14 +483,14 @@ export const useApi = () => {
               const newKeywords = file.foundByKeyword ? file.foundByKeyword.split(' + ') : []
               const allKeywords = [...new Set([...existingKeywords, ...newKeywords])]
               
-              const sortedKeywords = allKeywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+              const sortedKeywords = allKeywords.sort((a: string, b: string) => a.localeCompare(b, 'zh-CN'))
               
               existingFile.foundByKeyword = sortedKeywords.join(' + ')
               existingFile.match_score = Math.max(existingFile.match_score || 0, file.match_score || 0)
             } else {
               if (file.foundByKeyword) {
                 const keywords = file.foundByKeyword.split(' + ')
-                const sortedKeywords = keywords.sort((a, b) => a.localeCompare(b, 'zh-CN'))
+                const sortedKeywords = keywords.sort((a: string, b: string) => a.localeCompare(b, 'zh-CN'))
                 file.foundByKeyword = sortedKeywords.join(' + ')
               }
               fileMap.set(file.file_path, file)
@@ -387,7 +500,7 @@ export const useApi = () => {
           const uniqueResults = Array.from(fileMap.values())
           const sortedResults = uniqueResults
             .sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
-            .slice(0, 20)
+            .slice(0, 100)
 
           onProgress?.(`✨ 完成搜索，共找到 ${sortedResults.length} 个相关文件\n`)
 

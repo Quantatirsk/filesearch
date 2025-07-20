@@ -13,6 +13,7 @@ function App() {
   
   // Chat Assistant state
   const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false)
+  const [chatAssistantInitialQuery, setChatAssistantInitialQuery] = useState<string | null>(null)
   
   const { 
     selectedFiles, 
@@ -216,11 +217,22 @@ function App() {
 
   // Chat Assistant handlers
   const handleOpenChatAssistant = useCallback(() => {
+    setChatAssistantInitialQuery(null)
+    setIsChatAssistantOpen(true)
+  }, [])
+
+  const handleOpenChatAssistantWithQuery = useCallback((query: string) => {
+    setChatAssistantInitialQuery(query)
     setIsChatAssistantOpen(true)
   }, [])
 
   const handleCloseChatAssistant = useCallback(() => {
     setIsChatAssistantOpen(false)
+    setChatAssistantInitialQuery(null)
+  }, [])
+
+  const handleClearChatAssistant = useCallback(() => {
+    setChatAssistantInitialQuery(null)
   }, [])
 
   return (
@@ -231,6 +243,7 @@ function App() {
         onCopyFiles={handleCopyFiles}
         onDeleteFiles={handleDeleteFiles}
         onOpenChatAssistant={handleOpenChatAssistant}
+        onOpenChatAssistantWithQuery={handleOpenChatAssistantWithQuery}
         onSearch={handleSearch}
       />
 
@@ -250,6 +263,8 @@ function App() {
       <ChatAssistant
         isOpen={isChatAssistantOpen}
         onClose={handleCloseChatAssistant}
+        onClear={handleClearChatAssistant}
+        initialQuery={chatAssistantInitialQuery}
       />
 
       {/* Toast Notifications */}

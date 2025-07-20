@@ -140,3 +140,47 @@
 .status-bar {
   @apply h-6 bg-card border-t border-border flex items-center px-4 text-sm text-muted-foreground;
 }
+
+/* Line clamp utilities for multi-line text truncation */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+/* Virtualization performance optimizations */
+.virtualized-container {
+  contain: strict;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Table row borders */
+.table-row-border {
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* Compact table styling */
+.compact-table-row {
+  height: 32px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.compact-table-row:hover {
+  background-color: hsl(var(--muted) / 0.5);
+}

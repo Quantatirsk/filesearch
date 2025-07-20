@@ -20,6 +20,7 @@ interface ToolbarProps {
   onCopyFiles: () => void
   onDeleteFiles: () => void
   onOpenChatAssistant: () => void
+  onOpenChatAssistantWithQuery?: (query: string) => void
   onSearch?: (query: string, type: string) => void
 }
 
@@ -28,6 +29,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onCopyFiles,
   onDeleteFiles,
   onOpenChatAssistant,
+  onOpenChatAssistantWithQuery,
   onSearch
 }) => {
   const { 
@@ -42,15 +44,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const { getStats } = useApi()
 
   const handleRefreshStats = useCallback(async () => {
-    if (!isBackendRunning) return
-
-    try {
-      const stats = await getStats()
-      setStats(stats)
-    } catch (error) {
-      console.error('Failed to refresh stats:', error)
-    }
-  }, [isBackendRunning, getStats, setStats])
+    // 清空搜索输入，隐藏结果区域
+    const searchInput = document.querySelector('[data-search-input]') as HTMLInputElement
+    const searchInput2 = document.querySelector('.search-input-class') as HTMLInputElement
+    if (searchInput) searchInput.value = ''
+    if (searchInput2) searchInput2.value = ''
+    
+    // 清空所有搜索结果和选择
+    const { setSearchResults, setSearchQuery } = useAppStore.getState()
+    setSearchQuery('')
+    setSearchResults([])
+    clearSelection()
+  }, [clearSelection])
 
   const handleSelectAll = useCallback(() => {
     if (selectedFiles.length === searchResults.length) {
@@ -68,7 +73,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <div className="toolbar flex items-center justify-between px-2 py-1 bg-card border-b border-border">
       {/* Left section - Search Bar */}
       <div className="flex-1">
-        <SearchBar onSearch={onSearch} />
+        <SearchBar onSearch={onSearch} onOpenChatAssistant={onOpenChatAssistantWithQuery} />
       </div>
 
       {/* Center section - Operation Buttons */}
@@ -82,7 +87,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="h-7 px-2 text-xs"
         >
           <FolderOpen className="h-3 w-3 mr-1" />
-          添加目录
+          新建索引
         </Button>
 
         <Button

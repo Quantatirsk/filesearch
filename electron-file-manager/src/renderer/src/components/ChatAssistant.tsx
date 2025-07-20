@@ -58,11 +58,15 @@ interface ChatMessage {
 interface ChatAssistantProps {
   isOpen: boolean
   onClose: () => void
+  onClear?: () => void
+  initialQuery?: string | null
 }
 
 export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   isOpen,
-  onClose
+  onClose,
+  onClear,
+  initialQuery
 }) => {
   const { streamChatWithAssistant } = useApi()
   
@@ -91,13 +95,6 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
     scrollToBottom()
   }, [messages, currentStreamingMessage, scrollToBottom])
 
-  // Focus input when opened
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100)
-    }
-  }, [isOpen])
-
   // Helper function to update user message search state
   const updateUserMessageSearchState = useCallback((messageId: string, updates: Partial<Pick<ChatMessage, 'searchingContent' | 'isSearching' | 'searchCompleted'>>) => {
     setMessages(prev => prev.map(msg => 
@@ -106,6 +103,137 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         : msg
     ))
   }, [])
+
+  // Focus input when opened
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+    }
+  }, [isOpen])
+
+  // Auto-submit initial query when provided
+  useEffect(() => {
+    if (!isOpen || !initialQuery || !initialQuery.trim() || isStreaming || messages.length > 0) {
+      return
+    }
+    
+    setInputValue(initialQuery.trim())
+    // Delay to ensure the dialog is fully rendered and use a ref to avoid dependency cycles
+    const submitTimer = setTimeout(() => {
+      // Call handleSendMessage directly with the query
+      const query = initialQuery.trim()
+      if (!query || isStreaming) return
+
+      // Add user message with initial search state
+      const userMessageId = Date.now().toString()
+      const userMessage: ChatMessage = {
+        id: userMessageId,
+        role: 'user',
+        content: query,
+        timestamp: new Date(),
+        searchingContent: '',
+        isSearching: true,
+        searchCompleted: false
+      }
+
+      setMessages(prev => [...prev, userMessage])
+      setInputValue('')
+      setIsStreaming(true)
+      setCurrentStreamingMessage('')
+      setCurrentSearchingMessageId(userMessageId)
+      
+      // Execute the streaming chat logic
+      searchProgressCollectedRef.current = false
+
+      streamChatWithAssistant(query, (progressMessage) => {
+        setMessages(prev => prev.map(msg => 
+          msg.id === userMessageId && msg.role === 'user'
+            ? { ...msg, searchingContent: (msg.searchingContent || '') + progressMessage }
+            : msg
+        ))
+      }).then(({ stream, getRecommendedFiles, getExtractedKeywords }) => {
+        searchProgressCollectedRef.current = true
+        
+        let streamedContent = ''
+        const reader = stream.getReader()
+
+        const processStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              
+              if (done) break
+              
+              streamedContent += value
+              setCurrentStreamingMessage(streamedContent)
+            }
+
+            // Get recommended files and keywords
+            const recommendedFiles = await getRecommendedFiles()
+            const extractedKeywords = await getExtractedKeywords()
+
+            // Create assistant message
+            const assistantMessage: ChatMessage = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: streamedContent,
+              timestamp: new Date(),
+              recommendedFiles,
+              extractedKeywords
+            }
+
+            setMessages(prev => [...prev, assistantMessage])
+            setCurrentStreamingMessage('')
+            
+            // Mark search as completed
+            updateUserMessageSearchState(userMessageId, {
+              isSearching: false,
+              searchCompleted: true
+            })
+
+          } catch (streamError) {
+            console.error('Streaming error:', streamError)
+          } finally {
+            reader.releaseLock()
+            setIsStreaming(false)
+            setCurrentSearchingMessageId(null)
+            
+            const hasCollectedProgress = searchProgressCollectedRef.current
+            if (hasCollectedProgress) {
+              updateUserMessageSearchState(userMessageId, {
+                isSearching: false,
+                searchCompleted: true
+              })
+            } else {
+              updateUserMessageSearchState(userMessageId, {
+                isSearching: false,
+                searchCompleted: false,
+                searchingContent: ''
+              })
+            }
+          }
+        }
+
+        processStream()
+      }).catch(error => {
+        console.error('Chat error:', error)
+        
+        // Add error message
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `抱歉，处理您的请求时出现了错误：${error}`,
+          timestamp: new Date()
+        }
+        
+        setMessages(prev => [...prev, errorMessage])
+        setIsStreaming(false)
+        setCurrentSearchingMessageId(null)
+      })
+    }, 300)
+
+    return () => clearTimeout(submitTimer)
+  }, [isOpen, initialQuery, isStreaming, messages.length, streamChatWithAssistant, updateUserMessageSearchState])
 
   const handleSendMessage = useCallback(async () => {
     const query = inputValue.trim()
@@ -415,7 +543,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       abortControllerRef.current.abort()
       setIsStreaming(false)
     }
-  }, [])
+    // Clear the initial query to prevent re-triggering
+    onClear?.()
+  }, [onClear])
 
   if (!isOpen) return null
 
