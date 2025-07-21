@@ -29,6 +29,8 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 
-
+# LLM integration
+openai>=1.97.0
+python-dotenv>=1.1.1
 
 jieba

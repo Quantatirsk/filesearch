@@ -93,10 +93,28 @@ export class PythonBridge {
     }
 
     try {
+      // Set dynamic timeout based on operation type
+      let timeout = 30000 // Default 30 seconds
+      
+      // For indexing operations, use much longer timeout (20 minutes)
+      if (options.url?.includes('/index')) {
+        timeout = 1200000 // 20 minutes for large directory indexing
+      }
+      // For file content operations, use moderate timeout (2 minutes)
+      else if (options.url?.includes('/file/content')) {
+        timeout = 120000 // 2 minutes for large file processing
+      }
+      // For search operations, use shorter timeout (1 minute)
+      else if (options.url?.includes('/search')) {
+        timeout = 60000 // 1 minute for search operations
+      }
+      
+      console.log(`Making API request to ${options.url} with timeout: ${timeout}ms (${timeout/1000}s)`)
+      
       const response = await axios({
         ...options,
         baseURL: this.baseUrl,
-        timeout: 30000
+        timeout: timeout
       })
       return response.data
     } catch (error) {

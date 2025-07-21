@@ -5,24 +5,32 @@ import {
   Copy, 
   Trash2, 
   Settings,
-  CheckSquare
+  CheckSquare,
+  MessageCircle
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { useAppStore } from '../stores/app-store'
 import { useApi } from '../hooks/useApi'
 import { SettingsDialog } from './SettingsDialog'
+import { SearchBar } from './SearchBar'
 
 interface ToolbarProps {
   onSelectDirectory: () => void
   onCopyFiles: () => void
   onDeleteFiles: () => void
+  onOpenChatAssistant: () => void
+  onOpenChatAssistantWithQuery?: (query: string) => void
+  onSearch?: (query: string, type: string) => void
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   onSelectDirectory,
   onCopyFiles,
-  onDeleteFiles
+  onDeleteFiles,
+  onOpenChatAssistant,
+  onOpenChatAssistantWithQuery,
+  onSearch
 }) => {
   const { 
     isBackendRunning, 
@@ -36,15 +44,18 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const { getStats } = useApi()
 
   const handleRefreshStats = useCallback(async () => {
-    if (!isBackendRunning) return
-
-    try {
-      const stats = await getStats()
-      setStats(stats)
-    } catch (error) {
-      console.error('Failed to refresh stats:', error)
-    }
-  }, [isBackendRunning, getStats, setStats])
+    // 清空搜索输入，隐藏结果区域
+    const searchInput = document.querySelector('[data-search-input]') as HTMLInputElement
+    const searchInput2 = document.querySelector('.search-input-class') as HTMLInputElement
+    if (searchInput) searchInput.value = ''
+    if (searchInput2) searchInput2.value = ''
+    
+    // 清空所有搜索结果和选择
+    const { setSearchResults, setSearchQuery } = useAppStore.getState()
+    setSearchQuery('')
+    setSearchResults([])
+    clearSelection()
+  }, [clearSelection])
 
   const handleSelectAll = useCallback(() => {
     if (selectedFiles.length === searchResults.length) {
@@ -59,9 +70,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const isAllSelected = searchResults.length > 0 && selectedFiles.length === searchResults.length
 
   return (
-    <div className="toolbar flex items-center justify-between px-3 py-1.5 bg-card border-b border-border">
-      <div className="flex items-center space-x-1.5">
+    <div className="toolbar flex items-center justify-between px-2 py-1 bg-card border-b border-border">
+      {/* Left section - Search Bar */}
+      <div className="flex-1">
+        <SearchBar onSearch={onSearch} onOpenChatAssistant={onOpenChatAssistantWithQuery} />
+      </div>
 
+      {/* Center section - Operation Buttons */}
+      <div className="flex items-center space-x-1 mx-4">
         {/* Directory operations */}
         <Button
           variant="outline"
@@ -71,7 +87,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="h-7 px-2 text-xs"
         >
           <FolderOpen className="h-3 w-3 mr-1" />
-          添加目录
+          新建索引
         </Button>
 
         <Button
@@ -125,7 +141,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </Button>
       </div>
 
-      <div className="flex items-center space-x-1.5">
+      {/* Right section */}
+      <div className="flex items-center space-x-1 flex-shrink-0">
+        {/* Smart Assistant */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenChatAssistant}
+          disabled={!isBackendRunning}
+          className="h-7 px-2 text-xs"
+        >
+          <MessageCircle className="h-3 w-3 mr-1" />
+          智能助手
+        </Button>
+
         {/* Settings */}
         <SettingsDialog>
           <Button variant="outline" size="sm" className="h-7 px-2">

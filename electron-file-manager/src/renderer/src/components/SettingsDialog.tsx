@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { 
   Dialog, 
   DialogContent, 
@@ -31,12 +31,18 @@ import {
   CheckCircle,
   Circle,
   Eye,
-  EyeOff
+  EyeOff,
+  Database,
+  BarChart3,
+  Trash2,
+  PieChart
 } from 'lucide-react'
 
 import { useApi } from '../hooks/useApi'
 import { useAppStore } from '../stores/app-store'
 import { SupportedFormatsResponse, FormatCategory } from '../types'
+import { formatFileSize } from '../lib/utils'
+import { toast } from 'sonner'
 
 interface SettingsData {
   // 搜索设置
@@ -111,12 +117,13 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   children, 
   onSettingsChange 
 }) => {
-  const { settings, saveSettings, settingsLoading } = useAppStore()
+  const { settings, saveSettings, settingsLoading, stats, isBackendRunning, setStats, setSearchResults } = useAppStore()
   const [localSettings, setLocalSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const [isOpen, setIsOpen] = useState(false)
   const [formatsData, setFormatsData] = useState<SupportedFormatsResponse | null>(null)
   const [loading, setLoading] = useState(false)
-  const { getSupportedFormats } = useApi()
+  const [isClearing, setIsClearing] = useState(false)
+  const { getSupportedFormats, clearIndex, getStats } = useApi()
 
   // 同步设置数据
   useEffect(() => {
@@ -255,6 +262,44 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     updateSetting('enabledCategories', [])
   }
 
+  // 清空索引函数
+  const handleClearIndex = useCallback(async () => {
+    if (!isBackendRunning) {
+      toast.error('后端服务未运行')
+      return
+    }
+
+    const confirmed = confirm('确定要清空所有索引数据吗？此操作不可逆！')
+    if (!confirmed) return
+
+    setIsClearing(true)
+    try {
+      console.log('Clearing index...')
+      const result = await clearIndex()
+      
+      if (result.success) {
+        console.log('Index cleared successfully:', result.message)
+        
+        // 清空成功后重新获取统计信息
+        const newStats = await getStats()
+        setStats(newStats)
+        
+        // 清空搜索结果
+        setSearchResults([])
+        
+        toast.success('索引已成功清空')
+      } else {
+        console.error('Failed to clear index:', result.message)
+        toast.error(`清空索引失败: ${result.message}`)
+      }
+    } catch (error) {
+      console.error('Error clearing index:', error)
+      toast.error(`清空索引失败: ${error}`)
+    } finally {
+      setIsClearing(false)
+    }
+  }, [isBackendRunning, clearIndex, getStats, setStats, setSearchResults])
+
   // 获取图标组件
   const getIconComponent = (iconName: string) => {
     const icons: { [key: string]: any } = {
@@ -274,7 +319,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <SettingsIcon className="h-5 w-5" />
@@ -282,8 +327,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
         
-        <Tabs defaultValue="search" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-6">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <PieChart className="h-4 w-4" />
+              概览
+            </TabsTrigger>
             <TabsTrigger value="search" className="flex items-center gap-2">
               <Search className="h-4 w-4" />
               搜索
@@ -305,6 +354,112 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               高级
             </TabsTrigger>
           </TabsList>
+
+          {/* 概览页签 */}
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 数据库统计 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-4 w-4" />
+                    数据库统计
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">文档数量:</span>
+                      <Badge variant="secondary">{stats?.document_count || 0}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">数据库大小:</span>
+                      <Badge variant="outline">{formatFileSize(stats?.database_size || 0)}</Badge>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">内容大小:</span>
+                      <Badge variant="outline">{formatFileSize(stats?.total_content_size || 0)}</Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 快速操作 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    快速操作
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={handleClearIndex}
+                    disabled={!isBackendRunning || isClearing}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {isClearing ? '清空中...' : '清空索引'}
+                  </Button>
+                  <div className="text-xs text-muted-foreground">
+                    清空所有索引数据，此操作不可逆
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 文件类型分布 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  文件类型分布
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const fileTypeStats = stats?.file_types || {}
+                  const totalFiles = Object.values(fileTypeStats).reduce((sum, count) => sum + count, 0)
+                  
+                  if (totalFiles === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>暂无索引文件</p>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {Object.entries(fileTypeStats).map(([type, count]) => (
+                        <div key={type} className="flex items-center justify-between">
+                          <span className="flex items-center">
+                            <FileText className="h-3 w-3 mr-2 text-muted-foreground" />
+                            {type.toUpperCase()}
+                          </span>
+                          <div className="flex items-center space-x-3">
+                            <Badge variant="secondary">{count}</Badge>
+                            <div className="w-20 bg-secondary rounded-full h-2">
+                              <div 
+                                className="bg-primary h-2 rounded-full" 
+                                style={{ width: `${(count / totalFiles) * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground w-8">
+                              {Math.round((count / totalFiles) * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* 搜索设置 */}
           <TabsContent value="search" className="space-y-4">

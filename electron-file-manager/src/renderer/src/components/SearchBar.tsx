@@ -8,12 +8,13 @@ import { useSearch } from '../hooks/useSearch'
 
 interface SearchBarProps {
   onSearch?: (query: string, type: string) => void
+  onOpenChatAssistant?: (query: string) => void
 }
 
-export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => {
+export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpenChatAssistant }) => {
   // 使用本地状态管理输入框，避免与搜索结果状态耦合
   const [inputValue, setInputValue] = useState('')
-  const [searchType, setSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid'>('hybrid')
+  const [searchType, setSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>('quick')
   
   // 使用本地状态跟踪搜索状态，避免全局状态的影响
   const [localSearching, setLocalSearching] = useState(false)
@@ -41,7 +42,7 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
   }, [])
 
   const handleTypeChange = useCallback((type: string) => {
-    const newType = type as 'exact' | 'fuzzy' | 'path' | 'hybrid'
+    const newType = type as 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
     setSearchType(newType)
     // 移除自动搜索逻辑，只更新搜索类型
   }, [])
@@ -50,6 +51,12 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
   // 执行搜索的统一方法
   const executeSearch = useCallback(() => {
     if (inputValue.trim() && isBackendRunning) {
+      // 智能搜索：打开智能助手并传入查询
+      if (searchType === 'smart') {
+        onOpenChatAssistant?.(inputValue.trim())
+        return
+      }
+      
       setLocalSearching(true)
       setTimeout(() => setLocalSearching(false), 200)
       
@@ -57,7 +64,7 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
       performImmediateSearch(inputValue.trim(), searchType)
       onSearch?.(inputValue.trim(), searchType)
     }
-  }, [inputValue, searchType, isBackendRunning, performImmediateSearch, onSearch])
+  }, [inputValue, searchType, isBackendRunning, performImmediateSearch, onSearch, onOpenChatAssistant])
 
   // 处理中文输入法的组合事件（现在只是为了兼容性，不触发搜索）
   const handleCompositionStart = useCallback(() => {
@@ -77,43 +84,45 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch }) => 
   }, [executeSearch, isComposing])
 
   return (
-    <div className="flex items-center gap-3 w-full">
+    <div className="flex items-center gap-2 w-full">
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted-foreground h-3 w-3" />
         <Input
           ref={inputRef}
-          placeholder={isBackendRunning ? "搜索文件 (支持多个关键词，空格分隔) - 按Enter或点击搜索按钮..." : "请先启动Python后端服务..."}
+          placeholder={isBackendRunning ? "搜索文件 (支持多个关键词，空格分隔) - 按Enter或点击搜索按钮..." : "请先启动后端服务..."}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          className="pl-10 pr-10"
+          className="pl-8 pr-8 h-7 text-xs"
           disabled={localSearching || !isBackendRunning}
         />
         {localSearching ? (
-          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin" />
+          <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 animate-spin" />
         ) : (
           <Button
             size="sm"
             onClick={executeSearch}
             disabled={!inputValue.trim() || !isBackendRunning}
-            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 px-3"
+            className="absolute right-1 top-1/2 transform -translate-y-1/2 h-5 px-1.5"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-3 w-3" />
           </Button>
         )}
       </div>
       
       <Select value={searchType} onValueChange={handleTypeChange} disabled={!isBackendRunning}>
-        <SelectTrigger className="w-36">
+        <SelectTrigger className="w-24 h-7 text-xs">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="hybrid">混合搜索</SelectItem>
+          <SelectItem value="quick">快速搜索</SelectItem>
+          <SelectItem value="smart">智能搜索</SelectItem>
           <SelectItem value="exact">精确搜索</SelectItem>
-          <SelectItem value="fuzzy">模糊搜索</SelectItem>
           <SelectItem value="path">路径搜索</SelectItem>
+          <SelectItem value="fuzzy">模糊搜索</SelectItem>
+          <SelectItem value="hybrid">混合搜索</SelectItem>
         </SelectContent>
       </Select>
 

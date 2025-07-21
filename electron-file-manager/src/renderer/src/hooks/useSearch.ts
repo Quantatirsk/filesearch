@@ -45,6 +45,108 @@ export const useSearch = () => {
       console.log('  - Settings enabled formats:', settings.enabledFormats)
       console.log('  - File types to send:', fileTypesToSend)
       
+      // 快速搜索：并行执行精确搜索和路径搜索，然后合并去重结果
+      if (type === 'quick') {
+        console.log('🚀 执行快速搜索 - 并行精确搜索和路径搜索')
+        
+        const [exactResult, pathResult] = await Promise.all([
+          search({
+            query: searchQuery,
+            search_type: 'exact',
+            limit: 500,
+            min_fuzzy_score: 30.0,
+            file_types: fileTypesToSend
+          }),
+          search({
+            query: searchQuery,
+            search_type: 'path',
+            limit: 500,
+            min_fuzzy_score: 30.0,
+            file_types: fileTypesToSend
+          })
+        ])
+        
+        // 合并结果并去重
+        const allResults = []
+        const seenPaths = new Set<string>()
+        
+        // 先添加精确搜索结果（优先级更高）
+        if (exactResult.success && exactResult.results) {
+          for (const item of exactResult.results) {
+            if (!seenPaths.has(item.file_path)) {
+              seenPaths.add(item.file_path)
+              allResults.push({ ...item, foundByKeyword: 'exact' })
+            }
+          }
+        }
+        
+        // 再添加路径搜索结果
+        if (pathResult.success && pathResult.results) {
+          for (const item of pathResult.results) {
+            if (!seenPaths.has(item.file_path)) {
+              seenPaths.add(item.file_path)
+              allResults.push({ ...item, foundByKeyword: 'path' })
+            }
+          }
+        }
+        
+        console.log(`📊 快速搜索结果统计: 精确搜索${exactResult.results?.length || 0}个, 路径搜索${pathResult.results?.length || 0}个, 去重后${allResults.length}个`)
+        
+        // 创建合并结果对象
+        const result = {
+          success: true,
+          query: searchQuery,
+          search_type: 'quick',
+          results: allResults,
+          total_results: allResults.length,
+          search_time: (exactResult.search_time || 0) + (pathResult.search_time || 0),
+          limit: 1000
+        }
+        
+        if (result.success) {
+          // 转换后端数据格式为前端FileItem格式
+          const convertedResults = result.results.map((item: any) => {
+            
+            // 处理时间戳
+            let lastModified = new Date().toISOString()
+            if (item.last_modified) {
+              // 如果是数字时间戳，需要检查是秒还是毫秒
+              if (typeof item.last_modified === 'number') {
+                // 如果时间戳小于 1e12，说明是秒级时间戳，需要转换为毫秒
+                const timestamp = item.last_modified < 1e12 ? item.last_modified * 1000 : item.last_modified
+                lastModified = new Date(timestamp).toISOString()
+              } else if (typeof item.last_modified === 'string') {
+                lastModified = item.last_modified
+              }
+            } else if (item.last_indexed) {
+              lastModified = item.last_indexed
+            }
+            
+            const converted = {
+              id: item.file_path || item.id || Math.random().toString(36),
+              file_path: item.file_path,
+              file_name: item.file_name || item.file_path?.split('/').pop() || item.file_path?.split('\\').pop() || 'Unknown',
+              file_size: item.file_size || 0,
+              file_type: item.file_type || 'unknown',
+              last_modified: lastModified,
+              content_preview: '',
+              match_score: item.match_score || item.fuzzy_score || 100,
+              foundByKeyword: item.foundByKeyword
+            }
+            
+            return converted
+          })
+          
+          // 直接更新搜索结果，避免延迟影响用户交互
+          setSearchResults(convertedResults)
+        } else {
+          console.error('Quick search failed')
+          setSearchResults([])
+        }
+        
+        return
+      }
+      
       const result = await search({
         query: searchQuery,
         search_type: type as 'exact' | 'fuzzy' | 'path' | 'hybrid',

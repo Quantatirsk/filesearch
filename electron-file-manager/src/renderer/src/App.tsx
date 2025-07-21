@@ -1,10 +1,8 @@
 import React, { useRef, useCallback, useEffect, useState } from 'react'
-import { SearchBar } from './components/SearchBar'
 import { FileList } from './components/FileList'
 import { Toolbar } from './components/Toolbar'
-import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
-import { FolderNameDialog } from './components/FolderNameDialog'
+import { ChatAssistant } from './components/ChatAssistant'
 import { Toaster } from './components/ui/sonner'
 import { toast } from 'sonner'
 import { useAppStore } from './stores/app-store'
@@ -12,12 +10,10 @@ import { useApi } from './hooks/useApi'
 
 function App() {
   const fileListRef = useRef<HTMLDivElement>(null)
-  const [showFolderDialog, setShowFolderDialog] = useState(false)
-  const [pendingCopyData, setPendingCopyData] = useState<{
-    files: string[]
-    baseDirectory: string
-    suggestedName: string
-  } | null>(null)
+  
+  // Chat Assistant state
+  const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false)
+  const [chatAssistantInitialQuery, setChatAssistantInitialQuery] = useState<string | null>(null)
   
   const { 
     selectedFiles, 
@@ -118,24 +114,33 @@ function App() {
         // 自动索引选中的目录
         if (isBackendRunning) {
           console.log('Auto-indexing directory:', directory)
+          
+          // Show progress toast for long operations
+          const progressToast = toast.loading('正在索引目录，大型目录可能需要几分钟时间...')
+          
           try {
             const result = await indexDirectory({
               directory: directory,
               force: false,
-              workers: 4
+              workers: 8  // Increased workers for better performance
             })
+            
+            // Dismiss the progress toast
+            toast.dismiss(progressToast)
             
             if (result.success) {
               console.log(`Auto-indexed ${result.indexed_files} files`)
-              toast.success(`成功索引 ${result.indexed_files} 个文件`)
+              toast.success(`成功索引 ${result.indexed_files} 个文件`, { duration: 5000 })
               // 刷新统计信息
               const stats = await getStats()
               setStats(stats)
             } else {
               console.error('Auto-indexing failed:', result.error)
-              toast.error(`索引失败: ${result.error}`)
+              toast.error(`索引失败: ${result.error}`, { duration: 8000 })
             }
           } catch (error) {
+            // Dismiss the progress toast
+            toast.dismiss(progressToast)
             console.error('Auto-indexing error:', error)
             toast.error(`索引时发生错误: ${error}`)
           }
@@ -150,10 +155,16 @@ function App() {
     if (selectedFiles.length === 0) return
     
     try {
-      // 调试：检查搜索关键词
-      console.log('DEBUG: searchQuery value:', searchQuery)
-      console.log('DEBUG: searchQuery type:', typeof searchQuery)
-      console.log('DEBUG: searchQuery exists:', !!searchQuery)
+      // 生成时间戳
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0] + '_' + 
+                       new Date().toTimeString().split(' ')[0].replace(/:/g, '-')
+      
+      // 获取桌面路径
+      const desktopPath = await window.electronAPI.files.getDesktopPath()
+      if (!desktopPath) {
+        toast.error('无法获取桌面路径')
+        return
+      }
       
       // 生成基于搜索关键词的目录名
       let folderName = 'copied_files' // 默认名称
@@ -163,56 +174,28 @@ function App() {
           .replace(/[<>:"/\\|?*]/g, '') // 移除Windows不允许的字符
           .replace(/\s+/g, '_') // 用下划线替换空格
           .slice(0, 100) // 限制长度
-        console.log('DEBUG: Generated folderName:', folderName)
-      } else {
-        console.log('DEBUG: Using default folderName because searchQuery is empty or falsy')
       }
       
-      // 让用户选择基目录
-      const baseDirectory = await window.electronAPI.files.selectDirectory()
-      if (baseDirectory) {
-        // 设置待处理的导出数据并显示对话框
-        setPendingCopyData({
-          files: selectedFiles,
-          baseDirectory,
-          suggestedName: folderName
-        })
-        setShowFolderDialog(true)
-      }
-    } catch (error) {
-      console.error('Failed to copy files:', error)
-      toast.error(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
-    }
-  }, [selectedFiles, searchQuery])
-
-  const handleFolderNameConfirm = useCallback(async (folderName: string) => {
-    if (!pendingCopyData) return
-    
-    try {
-      // 构建完整的目标路径
-      const destination = `${pendingCopyData.baseDirectory}${pendingCopyData.baseDirectory.endsWith('/') || pendingCopyData.baseDirectory.endsWith('\\') ? '' : '/'}${folderName}`
+      const baseDir = `${desktopPath}/File_${folderName}_${timestamp}`
       
-      // 导出文件到目标目录
-      const result = await window.electronAPI.files.copy(pendingCopyData.files, destination)
+      // 创建基础目录
+      await window.electronAPI.files.createDirectory(baseDir)
+      
+      // 直接复制文件到基础目录
+      const result = await window.electronAPI.files.copy(selectedFiles, baseDir)
+      
       if (result.success) {
         clearSelection()
-        toast.success(`成功导出 ${pendingCopyData.files.length} 个文件到：${destination}`)
+        toast.success(`成功导出 ${selectedFiles.length} 个文件到桌面 File_${folderName}_${timestamp} 目录`)
       } else {
         toast.error(`导出操作失败：${result.message}`)
       }
     } catch (error) {
       console.error('Failed to copy files:', error)
       toast.error(`导出文件时发生错误：${error instanceof Error ? error.message : '未知错误'}`)
-    } finally {
-      setShowFolderDialog(false)
-      setPendingCopyData(null)
     }
-  }, [pendingCopyData, clearSelection])
+  }, [selectedFiles, searchQuery, clearSelection])
 
-  const handleFolderNameCancel = useCallback(() => {
-    setShowFolderDialog(false)
-    setPendingCopyData(null)
-  }, [])
 
   const handleDeleteFiles = useCallback(async () => {
     if (selectedFiles.length === 0) return
@@ -232,26 +215,41 @@ function App() {
     console.log('Search performed:', { query, type })
   }, [])
 
+  // Chat Assistant handlers
+  const handleOpenChatAssistant = useCallback(() => {
+    setChatAssistantInitialQuery(null)
+    setIsChatAssistantOpen(true)
+  }, [])
+
+  const handleOpenChatAssistantWithQuery = useCallback((query: string) => {
+    setChatAssistantInitialQuery(query)
+    setIsChatAssistantOpen(true)
+  }, [])
+
+  const handleCloseChatAssistant = useCallback(() => {
+    setIsChatAssistantOpen(false)
+    setChatAssistantInitialQuery(null)
+  }, [])
+
+  const handleClearChatAssistant = useCallback(() => {
+    setChatAssistantInitialQuery(null)
+  }, [])
+
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Toolbar */}
+      {/* Toolbar with integrated SearchBar */}
       <Toolbar
         onSelectDirectory={handleSelectDirectory}
         onCopyFiles={handleCopyFiles}
         onDeleteFiles={handleDeleteFiles}
+        onOpenChatAssistant={handleOpenChatAssistant}
+        onOpenChatAssistantWithQuery={handleOpenChatAssistantWithQuery}
+        onSearch={handleSearch}
       />
-
-      {/* Search Bar */}
-      <div className="px-4 py-3 bg-card border-b border-border">
-        <SearchBar onSearch={handleSearch} />
-      </div>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar />
-
-        {/* File List */}
+        {/* File List - Now takes full width */}
         <div className="flex-1 overflow-hidden">
           <FileList containerRef={fileListRef} />
         </div>
@@ -260,12 +258,13 @@ function App() {
       {/* Status Bar */}
       <StatusBar />
 
-      {/* Folder Name Dialog */}
-      <FolderNameDialog
-        open={showFolderDialog}
-        defaultName={pendingCopyData?.suggestedName || 'copied_files'}
-        onConfirm={handleFolderNameConfirm}
-        onCancel={handleFolderNameCancel}
+
+      {/* Chat Assistant */}
+      <ChatAssistant
+        isOpen={isChatAssistantOpen}
+        onClose={handleCloseChatAssistant}
+        onClear={handleClearChatAssistant}
+        initialQuery={chatAssistantInitialQuery}
       />
 
       {/* Toast Notifications */}

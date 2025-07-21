@@ -8,6 +8,7 @@ export interface FileItem {
   content_preview?: string
   match_score?: number
   highlighted_content?: string
+  foundByKeyword?: string
 }
 
 export interface SearchResult {
@@ -23,7 +24,7 @@ export interface SearchResult {
 
 export interface SearchOptions {
   query: string
-  search_type: 'exact' | 'fuzzy' | 'path' | 'hybrid'
+  search_type: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
   limit: number
   min_fuzzy_score: number
   file_types?: string[]

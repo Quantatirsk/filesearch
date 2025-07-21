@@ -3,6 +3,7 @@ import { join, dirname } from 'path'
 import { shell, clipboard } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { homedir, platform } from 'os'
 
 const execAsync = promisify(exec)
 
@@ -438,6 +439,80 @@ export class FileOperations {
       await fs.mkdir(path, { recursive: true })
     } catch (error) {
       // Directory might already exist, ignore error
+    }
+  }
+
+  async getDesktopPath(): Promise<string | null> {
+    try {
+      const userHome = homedir()
+      const currentPlatform = platform()
+      
+      let desktopPath: string
+      
+      switch (currentPlatform) {
+        case 'darwin': // macOS
+          desktopPath = join(userHome, 'Desktop')
+          break
+        case 'win32': // Windows
+          // Windows might have localized Desktop folder names
+          // Try both English and Chinese versions
+          const possiblePaths = [
+            join(userHome, 'Desktop'),
+            join(userHome, '桌面'),
+            join(userHome, 'OneDrive', 'Desktop'), // OneDrive desktop
+          ]
+          
+          for (const path of possiblePaths) {
+            try {
+              await fs.access(path)
+              desktopPath = path
+              break
+            } catch {
+              // Continue to next path
+            }
+          }
+          
+          if (!desktopPath!) {
+            desktopPath = join(userHome, 'Desktop') // fallback
+          }
+          break
+        case 'linux': // Linux
+          desktopPath = join(userHome, 'Desktop')
+          break
+        default:
+          desktopPath = join(userHome, 'Desktop')
+      }
+      
+      // Verify the desktop path exists, if not create it
+      try {
+        await fs.access(desktopPath)
+      } catch {
+        // Desktop folder doesn't exist, create it
+        await fs.mkdir(desktopPath, { recursive: true })
+      }
+      
+      console.log(`Desktop path detected: ${desktopPath} (Platform: ${currentPlatform})`)
+      return desktopPath
+    } catch (error) {
+      console.error('Failed to get desktop path:', error)
+      return null
+    }
+  }
+
+  async createDirectory(dirPath: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await fs.mkdir(dirPath, { recursive: true })
+      console.log(`Directory created successfully: ${dirPath}`)
+      return {
+        success: true,
+        message: 'Directory created successfully'
+      }
+    } catch (error) {
+      console.error(`Failed to create directory: ${dirPath}`, error)
+      return {
+        success: false,
+        message: `Failed to create directory: ${error instanceof Error ? error.message : 'Unknown error'}`
+      }
     }
   }
 }
