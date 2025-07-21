@@ -1,8 +1,45 @@
 {
   "permissions": {
     "allow": [
+<<<<<<< HEAD
       "Bash(git fetch:*)",
       "Bash(git checkout:*)"
+=======
+      "Bash(command:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm create:*)",
+      "Bash(rm:*)",
+      "Bash(chmod:*)",
+      "Bash(convert:*)",
+      "Bash(cp:*)",
+      "Bash(npm run dev:*)",
+      "Bash(grep:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install:*)",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(gtimeout:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(npm uninstall:*)",
+      "Bash(find:*)",
+      "Bash(pkill:*)",
+      "WebFetch(domain:ui.shadcn.com)",
+      "Bash(npx shadcn@latest add:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:bricxlabs.com)",
+      "WebFetch(domain:octet.design)",
+      "Bash(npm run build:*)",
+      "mcp__ide__getDiagnostics",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:tanstack.com)",
+      "Bash(npm run typecheck:*)"
+>>>>>>> 46286ab (更新package.json文件，修改项目描述为“高性能文件检索系统”，更新作者信息为“Quant”，并调整文件结构以包含“out/**/*”和“resources/**/*”。此更新旨在更准确地反映项目内容和结构。)
     ],
     "deny": []
   }
