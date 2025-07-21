@@ -1,10 +1,8 @@
 {
   "permissions": {
     "allow": [
-<<<<<<< HEAD
       "Bash(git fetch:*)",
-      "Bash(git checkout:*)"
-=======
+      "Bash(git checkout:*)",
       "Bash(command:*)",
       "Bash(mkdir:*)",
       "Bash(npm create:*)",
@@ -39,7 +37,6 @@
       "WebFetch(domain:dev.to)",
       "WebFetch(domain:tanstack.com)",
       "Bash(npm run typecheck:*)"
->>>>>>> 46286ab (更新package.json文件，修改项目描述为“高性能文件检索系统”，更新作者信息为“Quant”，并调整文件结构以包含“out/**/*”和“resources/**/*”。此更新旨在更准确地反映项目内容和结构。)
     ],
     "deny": []
   }
