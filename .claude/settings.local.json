@@ -37,6 +37,8 @@
       "WebFetch(domain:dev.to)",
       "WebFetch(domain:tanstack.com)",
       "Bash(npm run typecheck:*)"
+      "Bash(*)"
+
     ],
     "deny": []
   }

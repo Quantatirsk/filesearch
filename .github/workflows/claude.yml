@@ -19,35 +19,88 @@ jobs:
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+      checks: write
+      statuses: write
+      deployments: write
+      packages: write
+      security-events: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
+  
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@beta
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # This is an optional setting that allows Claude to read CI results on PRs
+          # 启用网络搜索和常用工具
+          allowed_tools: |
+            WebFetch(https://google.com/*),
+            WebFetch(https://www.google.com/*),
+            WebFetch(https://duckduckgo.com/*),
+            WebFetch(https://stackoverflow.com/*),
+            WebFetch(https://github.com/*),
+            WebFetch(https://docs.github.com/*),
+            WebFetch(https://developer.mozilla.org/*),
+            WebFetch(https://docs.python.org/*),
+            WebFetch(https://nodejs.org/*),
+            WebFetch(https://reactjs.org/*),
+            WebFetch(https://react.dev/*),
+            WebFetch(https://vuejs.org/*),
+            WebFetch(https://docs.docker.com/*),
+            WebFetch(https://kubernetes.io/*),
+            WebFetch(https://docs.aws.amazon.com/*),
+            WebFetch(https://docs.microsoft.com/*),
+            WebFetch(https://cloud.google.com/*),
+            WebFetch(https://dev.to/*),
+            WebFetch(https://medium.com/*),
+            WebFetch(https://news.ycombinator.com/*),
+            WebFetch(https://www.npmjs.com/*),
+            WebFetch(https://pypi.org/*),
+            WebFetch(https://crates.io/*),
+            WebFetch(https://go.dev/*),
+            WebFetch(https://docs.rust-lang.org/*),
+            WebFetch(https://git-scm.com/*),
+            WebFetch(https://www.atlassian.com/git/*),
+            WebFetch(https://docs.gitlab.com/*),
+            WebFetch(https://fastapi.tiangolo.com/*),
+            WebFetch(https://expressjs.com/*),
+            Bash(python main.py *),
+            Bash(pip install *),
+            Bash(npm install),
+            Bash(npm run *),
+            Bash(npm lint *),
+            Bash(git status),
+            Bash(git diff),
+            Bash(*),
+            Read(*),
+            Write(*),
+            Edit(*),
+            Glob(*),
+            Grep(*)
+          
+          # 增强权限
           additional_permissions: |
-            actions: read
+            actions: write
+            checks: write
+          
+          
           
           # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
           # model: "claude-opus-4-20250514"
           
           # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
+          # trigger_phrase: "@cc"
           
           # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
+          assignee_trigger: "claude-bot"
           
           # Optional: Allow Claude to run specific commands
           # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
@@ -61,4 +114,3 @@ jobs:
           # Optional: Custom environment variables for Claude
           # claude_env: |
           #   NODE_ENV: test
-
