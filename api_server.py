@@ -12,6 +12,14 @@ import signal
 import psutil
 import socket
 from pathlib import Path
+
+# Fix Windows encoding issue for emoji display
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except:
+        pass
 from typing import List, Dict, Any, Optional
 import tempfile
 import shutil
