@@ -3,8 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
 import { Skeleton } from './ui/skeleton'
+import { Input } from './ui/input'
 import { useApi } from '../hooks/useApi'
-import { FileText, Search, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Search, ChevronLeft, ChevronRight, X } from 'lucide-react'
 
 // 定义多关键词高亮颜色配置
 const HIGHLIGHT_COLORS = [
@@ -200,13 +201,18 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
   const [memoryWarning, setMemoryWarning] = useState(false)
+  // Internal search state
+  const [showSearchInput, setShowSearchInput] = useState(false)
+  const [internalSearchQuery, setInternalSearchQuery] = useState('')
   const contentRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { getFileContent } = useApi()
 
-  // 获取搜索关键词
+  // 获取搜索关键词 - 优先使用内部搜索，如果为空则使用外部搜索
   const searchKeywords = useMemo(() => {
-    return searchQuery.trim().split(/\s+/).filter(k => k.length > 1)
-  }, [searchQuery])
+    const activeQuery = internalSearchQuery.trim() || searchQuery.trim()
+    return activeQuery.split(/\s+/).filter(k => k.length > 1)
+  }, [internalSearchQuery, searchQuery])
 
   // 预计算所有匹配位置 - 使用useEffect处理状态更新
   const [processedResult, setProcessedResult] = useState<{
@@ -323,7 +329,45 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   useEffect(() => {
     setSelectedKeywordIndex(0)
     setCurrentMatchIndex(0)
-  }, [searchQuery, filePath])
+  }, [searchQuery, filePath, internalSearchQuery])
+
+  // 处理搜索输入的显示/隐藏
+  const toggleSearchInput = useCallback(() => {
+    setShowSearchInput(prev => {
+      const newState = !prev
+      if (newState) {
+        // 显示搜索框时自动聚焦
+        setTimeout(() => {
+          searchInputRef.current?.focus()
+        }, 100)
+      } else {
+        // 隐藏搜索框时清空搜索内容
+        setInternalSearchQuery('')
+      }
+      return newState
+    })
+  }, [])
+
+  // 处理搜索输入变化
+  const handleSearchInputChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setInternalSearchQuery(event.target.value)
+  }, [])
+
+  // 处理搜索输入的键盘事件
+  const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    switch (event.key) {
+      case 'Escape':
+        event.preventDefault()
+        toggleSearchInput()
+        break
+      case 'Enter':
+        event.preventDefault()
+        if (totalMatches > 0) {
+          goToNextMatch()
+        }
+        break
+    }
+  }, [toggleSearchInput, totalMatches, goToNextMatch])
 
   // 导航到上一个匹配
   const goToPreviousMatch = useCallback(() => {
@@ -395,7 +439,33 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
   // 键盘事件处理
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isOpen || totalMatches === 0) return
+      if (!isOpen) return
+      
+      // Ctrl+F 快捷键 - 最高优先级
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        toggleSearchInput()
+        return
+      }
+
+      // 如果搜索输入框已显示且有焦点，不处理其他快捷键
+      if (showSearchInput && document.activeElement === searchInputRef.current) {
+        return
+      }
+      
+      // 其他导航快捷键只有在有匹配结果时才生效
+      if (totalMatches === 0) {
+        // Escape 键关闭对话框（即使没有匹配结果）
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          if (showSearchInput) {
+            toggleSearchInput()
+          } else {
+            onClose()
+          }
+        }
+        return
+      }
       
       switch (event.key) {
         case 'ArrowLeft':
@@ -410,7 +480,11 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
           break
         case 'Escape':
           event.preventDefault()
-          onClose()
+          if (showSearchInput) {
+            toggleSearchInput()
+          } else {
+            onClose()
+          }
           break
       }
     }
@@ -422,7 +496,7 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     return () => {
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen, totalMatches, goToPreviousMatch, goToNextMatch, onClose])
+  }, [isOpen, totalMatches, goToPreviousMatch, goToNextMatch, onClose, toggleSearchInput, showSearchInput])
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -460,10 +534,51 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
                 </div>
               </div>
             </div>
+            
+            {/* 搜索按钮 */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={toggleSearchInput}
+                title="搜索文本 (Ctrl+F)"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
           </DialogTitle>
           
+          {/* 搜索输入框 */}
+          {showSearchInput && (
+            <div className="mt-2 px-2">
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="输入搜索文本..."
+                    value={internalSearchQuery}
+                    onChange={handleSearchInputChange}
+                    onKeyDown={handleSearchInputKeyDown}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={toggleSearchInput}
+                  title="关闭搜索"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+          
           {/* 搜索关键词显示区域 */}
-          {searchQuery && searchKeywords.length > 0 && (
+          {(searchQuery || internalSearchQuery) && searchKeywords.length > 0 && (
             <div className="mt-2 px-2">
               <div className="flex items-center justify-between">
                 {/* 左侧：搜索信息 */}
