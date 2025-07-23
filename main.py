@@ -34,9 +34,6 @@ Examples:
   # Fuzzy search with minimum similarity score
   python main.py search "pythn programing" --type fuzzy --min-score 40
 
-  # Fuzzy search
-  python main.py search "pythn programing" --type fuzzy --min-score 40
-
   # Path search
   python main.py search "*.pdf" --type path
 
@@ -265,7 +262,6 @@ def handle_interactive(args):
     print("Commands:")
     print("  search <query>        - Exact search")
     print("  fuzzy <query>         - Fuzzy search")
-    print("  boolean <query>       - Boolean search")
     print("  path <pattern>        - Path search")
     print("  stats                 - Show database statistics")
     print("  help                  - Show this help")
@@ -283,7 +279,7 @@ def handle_interactive(args):
                 break
             
             if user_input.lower() == 'help':
-                print("Available commands: search, fuzzy, boolean, path, stats, help, quit")
+                print("Available commands: search, fuzzy, path, stats, help, quit")
                 continue
             
             if user_input.lower() == 'stats':
@@ -304,8 +300,6 @@ def handle_interactive(args):
                 result = search_manager.search(query, 'exact', 10)
             elif command.lower() == 'fuzzy':
                 result = search_manager.search(query, 'fuzzy', 10)
-            elif command.lower() == 'boolean':
-                result = search_manager.search(query, 'boolean', 10)
             elif command.lower() == 'path':
                 result = search_manager.search(query, 'path', 10)
             else:

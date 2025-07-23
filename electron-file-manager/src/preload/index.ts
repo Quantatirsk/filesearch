@@ -29,6 +29,22 @@ const customElectronAPI: CustomElectronAPI = {
     save: (settings: unknown) => ipcRenderer.invoke('settings:save', settings),
     get: () => ipcRenderer.invoke('settings:get'),
     reset: () => ipcRenderer.invoke('settings:reset')
+  },
+  searchOverlay: {
+    onShow: (callback: () => void) => {
+      ipcRenderer.on('show-search-overlay', callback)
+      return () => ipcRenderer.removeListener('show-search-overlay', callback)
+    },
+    onSetSearchWindow: (callback: (isSearchWindow: boolean) => void) => {
+      ipcRenderer.on('set-search-window', callback)
+      return () => ipcRenderer.removeListener('set-search-window', callback)
+    },
+    openMainWindow: (query: string, searchType: string) => 
+      ipcRenderer.invoke('search:open-main-window', query, searchType),
+    notifyReady: () => ipcRenderer.send('search-window-ready')
+  },
+  platform: {
+    isMac: process.platform === 'darwin'
   }
 }
 

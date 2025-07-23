@@ -29,11 +29,24 @@ export interface ElectronSettingsAPI {
   reset: () => Promise<unknown>
 }
 
+export interface ElectronSearchOverlayAPI {
+  onShow: (callback: () => void) => () => void
+  onSetSearchWindow: (callback: (isSearchWindow: boolean) => void) => () => void
+  openMainWindow: (query: string, searchType: string) => Promise<{ success: boolean; error?: string }>
+  notifyReady: () => void
+}
+
+export interface ElectronPlatformAPI {
+  isMac: boolean
+}
+
 export interface CustomElectronAPI {
   python: ElectronPythonAPI
   files: ElectronFileAPI
   api: ElectronAPIRequest
   settings: ElectronSettingsAPI
+  searchOverlay: ElectronSearchOverlayAPI
+  platform: ElectronPlatformAPI
 }
 
 declare global {

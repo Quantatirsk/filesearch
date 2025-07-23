@@ -191,11 +191,6 @@ except Exception as e:
 
 def get_search_manager(db_path: str = DEFAULT_DB_PATH) -> SearchManager:
     """Get search manager instance"""
-    print(f"🔍 DEBUG: get_search_manager called with db_path={db_path}")
-    print(f"🔍 DEBUG: Absolute db_path={os.path.abspath(db_path)}")
-    print(f"🔍 DEBUG: Database file exists: {os.path.exists(db_path)}")
-    if os.path.exists(db_path):
-        print(f"🔍 DEBUG: Database file size: {os.path.getsize(db_path)} bytes")
     return SearchManager(db_path)
 
 
@@ -336,12 +331,6 @@ async def search_documents(
     - **hybrid**: Combined search using all methods with deduplication
     """
     try:
-        print(f"🔍 DEBUG: Search endpoint called:")
-        print(f"🔍 DEBUG: - query={request.query}")
-        print(f"🔍 DEBUG: - search_type={request.search_type}")
-        print(f"🔍 DEBUG: - file_types={request.file_types}")
-        print(f"🔍 DEBUG: - db_path={db_path}")
-        
         search_manager = get_search_manager(db_path)
         result = search_manager.search(
             query=request.query,
@@ -351,12 +340,9 @@ async def search_documents(
             file_types=request.file_types
         )
         
-        print(f"🔍 DEBUG: Search result - total_results={result.get('total_results', 0)}")
-        
         return SearchResponse(**result)
     
     except Exception as e:
-        print(f"❌ DEBUG: Search error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

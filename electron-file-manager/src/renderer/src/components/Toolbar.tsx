@@ -22,6 +22,8 @@ interface ToolbarProps {
   onOpenChatAssistant: () => void
   onOpenChatAssistantWithQuery?: (query: string) => void
   onSearch?: (query: string, type: string) => void
+  ipcSearchQuery?: string
+  ipcSearchType?: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -30,7 +32,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onDeleteFiles,
   onOpenChatAssistant,
   onOpenChatAssistantWithQuery,
-  onSearch
+  onSearch,
+  ipcSearchQuery,
+  ipcSearchType
 }) => {
   const { 
     isBackendRunning, 
@@ -73,7 +77,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     <div className="toolbar flex items-center justify-between px-2 py-1 bg-card border-b border-border">
       {/* Left section - Search Bar */}
       <div className="flex-1">
-        <SearchBar onSearch={onSearch} onOpenChatAssistant={onOpenChatAssistantWithQuery} />
+        <SearchBar 
+          onSearch={onSearch} 
+          onOpenChatAssistant={onOpenChatAssistantWithQuery}
+          initialQuery={ipcSearchQuery}
+          initialSearchType={ipcSearchType}
+        />
       </div>
 
       {/* Center section - Operation Buttons */}

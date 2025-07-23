@@ -3,10 +3,12 @@ import { FileList } from './components/FileList'
 import { Toolbar } from './components/Toolbar'
 import { StatusBar } from './components/StatusBar'
 import { ChatAssistant } from './components/ChatAssistant'
+import { SearchOverlay } from './components/SearchOverlay'
 import { Toaster } from './components/ui/sonner'
 import { toast } from 'sonner'
 import { useAppStore } from './stores/app-store'
 import { useApi } from './hooks/useApi'
+import { useSearch } from './hooks/useSearch'
 
 function App() {
   const fileListRef = useRef<HTMLDivElement>(null)
@@ -14,6 +16,14 @@ function App() {
   // Chat Assistant state
   const [isChatAssistantOpen, setIsChatAssistantOpen] = useState(false)
   const [chatAssistantInitialQuery, setChatAssistantInitialQuery] = useState<string | null>(null)
+  
+  // Search Overlay state
+  const [isSearchOverlayOpen, setIsSearchOverlayOpen] = useState(false)
+  const [isSearchWindow, setIsSearchWindow] = useState(false)
+  
+  // IPC search state - for filling main interface search bar
+  const [ipcSearchQuery, setIpcSearchQuery] = useState<string>('')
+  const [ipcSearchType, setIpcSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>('quick')
   
   const { 
     selectedFiles, 
@@ -27,11 +37,43 @@ function App() {
   } = useAppStore()
   
   const { indexDirectory, getStats } = useApi()
+  const { performImmediateSearch } = useSearch()
 
   // 启动时加载设置
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  // Setup global shortcut listener
+  useEffect(() => {
+    const cleanup1 = window.electronAPI.searchOverlay.onShow(() => {
+      setIsSearchOverlayOpen(true)
+    })
+    
+    const cleanup2 = window.electronAPI.searchOverlay.onSetSearchWindow?.((isSearch) => {
+      setIsSearchWindow(isSearch)
+    })
+    
+    return () => {
+      cleanup1()
+      cleanup2?.()
+    }
+  }, [])
+
+  // Setup local keyboard shortcuts for testing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Local shortcut for search overlay (Ctrl+K / Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsSearchOverlayOpen(true)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
 
   // 启动时自动启动后端服务
   useEffect(() => {
@@ -222,8 +264,10 @@ function App() {
   }, [])
 
   const handleOpenChatAssistantWithQuery = useCallback((query: string) => {
+    console.log('handleOpenChatAssistantWithQuery called with:', query)
     setChatAssistantInitialQuery(query)
     setIsChatAssistantOpen(true)
+    console.log('Chat assistant should now be open with query:', query)
   }, [])
 
   const handleCloseChatAssistant = useCallback(() => {
@@ -235,6 +279,109 @@ function App() {
     setChatAssistantInitialQuery(null)
   }, [])
 
+  // Search Overlay handlers
+  const handleCloseSearchOverlay = useCallback(() => {
+    setIsSearchOverlayOpen(false)
+  }, [])
+
+  // Listen for search requests from search window
+  useEffect(() => {
+    const { ipcRenderer } = window.electron
+    
+    const handlePerformSearch = async (event: any, query: string, searchType: string) => {
+      console.log('Received perform-search IPC:', { query, searchType })
+      if (query && searchType) {
+        try {
+          // 设置搜索参数到状态，这样SearchBar会自动填充
+          console.log('Setting IPC search params:', { query, searchType })
+          setIpcSearchQuery(query)
+          setIpcSearchType(searchType as any)
+          
+          // 延迟清理状态，确保SearchBar有时间接收到新值
+          setTimeout(() => {
+            console.log('Clearing IPC search query')
+            setIpcSearchQuery('')
+          }, 500) // 增加延迟时间
+          
+          if (searchType === 'smart') {
+            // Open chat assistant for smart search
+            console.log('Opening chat assistant with query:', query)
+            handleOpenChatAssistantWithQuery(query)
+          } else {
+            // Perform regular search
+            console.log('Performing immediate search:', query, searchType)
+            await performImmediateSearch(query, searchType as any)
+          }
+        } catch (error) {
+          console.error('Error performing search from IPC:', error)
+        }
+      }
+    }
+
+    ipcRenderer.on('perform-search', handlePerformSearch)
+    
+    return () => {
+      ipcRenderer.removeListener('perform-search', handlePerformSearch)
+    }
+  }, [performImmediateSearch, handleOpenChatAssistantWithQuery])
+
+  // 设置搜索窗口的透明背景（在组件顶层调用useEffect）
+  useEffect(() => {
+    if (isSearchWindow) {
+      document.body.style.background = 'transparent'
+      document.body.style.backgroundColor = 'transparent'
+      document.documentElement.style.background = 'transparent'
+      document.documentElement.style.backgroundColor = 'transparent'
+      
+      // 清理函数：组件卸载时或不再是搜索窗口时恢复原来的样式
+      return () => {
+        document.body.style.background = ''
+        document.body.style.backgroundColor = ''
+        document.documentElement.style.background = ''
+        document.documentElement.style.backgroundColor = ''
+      }
+    }
+  }, [isSearchWindow])
+
+  // If this is a search window, only show the search overlay
+  if (isSearchWindow) {
+    return (
+      <div className="h-screen w-full" style={{ background: 'transparent', backgroundColor: 'transparent' }}>
+        <SearchOverlay
+          isVisible={true}
+          onClose={() => window.close()}
+          onOpenChatAssistant={async (query) => {
+            try {
+              // 智能搜索也通过IPC打开主界面
+              console.log('Smart search via IPC:', query)
+              const result = await window.electronAPI.searchOverlay.openMainWindow(query, 'smart')
+              if (!result.success) {
+                console.error('Failed to open main window for smart search:', result.error)
+              }
+            } catch (error) {
+              console.error('Error opening main window for smart search:', error)
+            }
+            // 无论IPC是否成功，都关闭搜索窗口（因为onClose已经在executeSearch中调用）
+            window.close()
+          }}
+          onSearchAndOpenMain={async (query, searchType) => {
+            try {
+              // 通过 IPC 打开主界面并执行搜索
+              const result = await window.electronAPI.searchOverlay.openMainWindow(query, searchType)
+              if (!result.success) {
+                console.error('Failed to open main window:', result.error)
+              }
+            } catch (error) {
+              console.error('Error opening main window:', error)
+            }
+            // 无论IPC是否成功，都关闭搜索窗口（因为onClose已经在executeSearch中调用）
+            window.close()
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Toolbar with integrated SearchBar */}
@@ -245,6 +392,8 @@ function App() {
         onOpenChatAssistant={handleOpenChatAssistant}
         onOpenChatAssistantWithQuery={handleOpenChatAssistantWithQuery}
         onSearch={handleSearch}
+        ipcSearchQuery={ipcSearchQuery}
+        ipcSearchType={ipcSearchType}
       />
 
       {/* Main Content */}
@@ -258,6 +407,13 @@ function App() {
       {/* Status Bar */}
       <StatusBar />
 
+
+      {/* Search Overlay */}
+      <SearchOverlay
+        isVisible={isSearchOverlayOpen}
+        onClose={handleCloseSearchOverlay}
+        onOpenChatAssistant={handleOpenChatAssistantWithQuery}
+      />
 
       {/* Chat Assistant */}
       <ChatAssistant

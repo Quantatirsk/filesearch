@@ -270,22 +270,11 @@ class SearchManager:
             List of combined search results
         """
         try:
-            print(f"🔍 DEBUG: search_hybrid called with:")
-            print(f"🔍 DEBUG: - query={query}")
-            print(f"🔍 DEBUG: - limit={limit}")
-            print(f"🔍 DEBUG: - min_fuzzy_score={min_fuzzy_score}")
-            print(f"🔍 DEBUG: - file_types={file_types}")
-            print(f"🔍 DEBUG: - db_path={self.db_path}")
-            
             # Get exact matches first
-            print("🔍 DEBUG: Calling search_exact...")
             exact_results = self.search_exact(query, limit // 2, file_types)
-            print(f"🔍 DEBUG: Exact results count: {len(exact_results)}")
             
             # Get fuzzy matches
-            print("🔍 DEBUG: Calling search_fuzzy...")
             fuzzy_results = self.search_fuzzy(query, limit, min_fuzzy_score, file_types)
-            print(f"🔍 DEBUG: Fuzzy results count: {len(fuzzy_results)}")
             
             # Combine results, exact matches first
             seen_paths = set()
@@ -306,7 +295,6 @@ class SearchManager:
                     seen_paths.add(result['file_path'])
             
             # Limit final results
-            print(f"🔍 DEBUG: Combined results count: {len(combined_results)}")
             return combined_results[:limit]
             
         except Exception as e:

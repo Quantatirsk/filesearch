@@ -9,9 +9,11 @@ import { useSearch } from '../hooks/useSearch'
 interface SearchBarProps {
   onSearch?: (query: string, type: string) => void
   onOpenChatAssistant?: (query: string) => void
+  initialQuery?: string
+  initialSearchType?: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
 }
 
-export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpenChatAssistant }) => {
+export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpenChatAssistant, initialQuery, initialSearchType }) => {
   // 使用本地状态管理输入框，避免与搜索结果状态耦合
   const [inputValue, setInputValue] = useState('')
   const [searchType, setSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>('quick')
@@ -25,11 +27,37 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
   
   // 保持输入框焦点的引用
   const inputRef = useRef<HTMLInputElement>(null)
-  
-  // 确保输入框在搜索后保持焦点
+  // 跟踪是否正在设置外部值
+  const isSettingExternalValue = useRef(false)
+
+  // 处理外部传入的初始查询和搜索类型
   useEffect(() => {
-    if (!localSearching && inputRef.current) {
-      // 延迟确保DOM更新完成
+    if (initialQuery !== undefined && initialQuery !== '') {
+      console.log('Setting initial query:', initialQuery)
+      isSettingExternalValue.current = true
+      setInputValue(initialQuery)
+      // 确保输入框获得焦点并选中文本
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+          inputRef.current.select()
+        }
+        // 设置完成后重置标志
+        setTimeout(() => {
+          isSettingExternalValue.current = false
+        }, 100)
+      }, 50)
+    }
+    if (initialSearchType !== undefined) {
+      console.log('Setting initial search type:', initialSearchType)
+      setSearchType(initialSearchType)
+    }
+  }, [initialQuery, initialSearchType])
+  
+  // 确保输入框在搜索后保持焦点，但不要在外部设置值时干扰
+  useEffect(() => {
+    if (!localSearching && inputRef.current && !isSettingExternalValue.current) {
+      // 只有在没有设置外部值时才重新聚焦
       setTimeout(() => {
         inputRef.current?.focus()
       }, 0)

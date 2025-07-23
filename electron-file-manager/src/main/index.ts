@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PythonBridge } from './python-bridge'
@@ -9,6 +9,7 @@ import { SettingsStore } from './settings-store'
 const iconPath = join(__dirname, '../../resources/icon.png')
 
 let mainWindow: BrowserWindow
+let searchWindow: BrowserWindow | null = null
 let pythonBridge: PythonBridge
 let fileOperations: FileOperations
 let settingsStore: SettingsStore
@@ -71,6 +72,9 @@ app.whenReady().then(() => {
 
   // Setup IPC handlers
   setupIpcHandlers()
+
+  // Setup global shortcuts
+  setupGlobalShortcuts()
 
   createWindow()
 
@@ -176,7 +180,127 @@ function setupIpcHandlers(): void {
   ipcMain.handle('settings:reset', async () => {
     return settingsStore.reset()
   })
+
+  // Search window management
+  ipcMain.handle('search:open-main-window', async (_, query: string, searchType: string) => {
+    // Show and focus the main window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      mainWindow.show()
+      mainWindow.focus()
+      
+      // Send the search query to the main window
+      mainWindow.webContents.send('perform-search', query, searchType)
+      return { success: true }
+    }
+    return { success: false, error: 'Main window not available' }
+  })
 }
+
+function createSearchWindow(): void {
+  if (searchWindow && !searchWindow.isDestroyed()) {
+    // 确保窗口在最高层级显示
+    searchWindow.setAlwaysOnTop(true, 'screen-saver')
+    searchWindow.show()
+    searchWindow.focus()
+    return
+  }
+
+  searchWindow = new BrowserWindow({
+    width: 600,
+    height: 80,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: true,
+    focusable: true,
+    // macOS 特定设置，确保能覆盖全屏应用
+    ...(process.platform === 'darwin' ? {
+      fullscreenable: false,
+      visibleOnAllWorkspaces: true
+    } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  // Load the same renderer but it will show only the search overlay
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    searchWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  } else {
+    searchWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  searchWindow.on('ready-to-show', () => {
+    // 设置最高层级，确保能覆盖全屏应用
+    if (searchWindow && !searchWindow.isDestroyed()) {
+      searchWindow.setAlwaysOnTop(true, 'screen-saver')
+    }
+    // 不要立即显示窗口，等待渲染完成
+    searchWindow?.webContents.send('show-search-overlay')
+    searchWindow?.webContents.send('set-search-window', true)
+  })
+
+  // 监听渲染进程的渲染完成消息 (每次创建窗口时重新监听)
+  const handleSearchReady = () => {
+    if (searchWindow && !searchWindow.isDestroyed()) {
+      // 再次确保最高层级设置
+      searchWindow.setAlwaysOnTop(true, 'screen-saver')
+      searchWindow.show()
+      searchWindow.focus()
+    }
+  }
+  
+  // 移除之前的监听器并添加新的
+  ipcMain.removeListener('search-window-ready', handleSearchReady)
+  ipcMain.once('search-window-ready', handleSearchReady)
+
+  // Hide window when it loses focus
+  searchWindow.on('blur', () => {
+    if (searchWindow && !searchWindow.isDestroyed()) {
+      searchWindow.hide()
+    }
+  })
+
+  // Clean up reference when window is closed
+  searchWindow.on('closed', () => {
+    // 清理事件监听器
+    ipcMain.removeListener('search-window-ready', handleSearchReady)
+    searchWindow = null
+  })
+}
+
+// Setup global shortcuts
+function setupGlobalShortcuts(): void {
+  // Register global hotkey for search overlay (Alt+Shift+F on Windows/Linux, Option+Shift+F on macOS)
+  const searchShortcut = process.platform === 'darwin' ? 'Option+Shift+F' : 'Alt+Shift+F'
+  
+  const isRegistered = globalShortcut.register(searchShortcut, () => {
+    createSearchWindow()
+  })
+
+  if (!isRegistered) {
+    console.log('Failed to register global shortcut:', searchShortcut)
+  } else {
+    console.log('Global shortcut registered:', searchShortcut)
+  }
+}
+
+// Clean up global shortcuts when app is quitting
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})
 
 // In this file you can include the rest of your app"s specific main process
 // code. You can also put them in separate files and require them here.

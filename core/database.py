@@ -220,7 +220,7 @@ class DocumentDatabase:
     
     def search_exact(self, query: str, limit: int = 100, file_types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        Perform exact/boolean search using LIKE for multiple keywords.
+        Perform exact search using LIKE for multiple keywords.
         
         Args:
             query: Search query string (supports multiple keywords separated by space)
