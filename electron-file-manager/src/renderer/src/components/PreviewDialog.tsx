@@ -353,6 +353,18 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
     setInternalSearchQuery(event.target.value)
   }, [])
 
+  // 导航到上一个匹配
+  const goToPreviousMatch = useCallback(() => {
+    if (totalMatches === 0) return
+    setCurrentMatchIndex(prev => prev === 0 ? totalMatches - 1 : prev - 1)
+  }, [totalMatches])
+
+  // 导航到下一个匹配
+  const goToNextMatch = useCallback(() => {
+    if (totalMatches === 0) return
+    setCurrentMatchIndex(prev => prev === totalMatches - 1 ? 0 : prev + 1)
+  }, [totalMatches])
+
   // 处理搜索输入的键盘事件
   const handleSearchInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
     switch (event.key) {
@@ -368,18 +380,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
         break
     }
   }, [toggleSearchInput, totalMatches, goToNextMatch])
-
-  // 导航到上一个匹配
-  const goToPreviousMatch = useCallback(() => {
-    if (totalMatches === 0) return
-    setCurrentMatchIndex(prev => prev === 0 ? totalMatches - 1 : prev - 1)
-  }, [totalMatches])
-
-  // 导航到下一个匹配
-  const goToNextMatch = useCallback(() => {
-    if (totalMatches === 0) return
-    setCurrentMatchIndex(prev => prev === totalMatches - 1 ? 0 : prev + 1)
-  }, [totalMatches])
 
   // 选择关键词
   const selectKeyword = useCallback((index: number) => {
@@ -535,8 +535,33 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
               </div>
             </div>
             
-            {/* 搜索按钮 */}
+            {/* 搜索区域 */}
             <div className="flex items-center gap-1 flex-shrink-0">
+              {/* 搜索输入框 */}
+              {showSearchInput && (
+                <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
+                  <Input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="输入搜索文本..."
+                    value={internalSearchQuery}
+                    onChange={handleSearchInputChange}
+                    onKeyDown={handleSearchInputKeyDown}
+                    className="h-8 text-sm w-32 sm:w-40 md:w-48"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={toggleSearchInput}
+                    title="关闭搜索"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              
+              {/* 搜索按钮 */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -548,34 +573,6 @@ export const PreviewDialog: React.FC<PreviewDialogProps> = ({
               </Button>
             </div>
           </DialogTitle>
-          
-          {/* 搜索输入框 */}
-          {showSearchInput && (
-            <div className="mt-2 px-2">
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <Input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="输入搜索文本..."
-                    value={internalSearchQuery}
-                    onChange={handleSearchInputChange}
-                    onKeyDown={handleSearchInputKeyDown}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={toggleSearchInput}
-                  title="关闭搜索"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          )}
           
           {/* 搜索关键词显示区域 */}
           {(searchQuery || internalSearchQuery) && searchKeywords.length > 0 && (
