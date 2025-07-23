@@ -36,8 +36,6 @@ import { Skeleton } from './ui/skeleton'
 import { Input } from './ui/input'
 import { 
   Eye, 
-  ExternalLink, 
-  Folder, 
   MoreHorizontal, 
   Copy, 
   Edit, 
@@ -119,6 +117,11 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   const [isSummaryOpen, setIsSummaryOpen] = useState(false)
   const [summaryStream, setSummaryStream] = useState<ReadableStream<string> | null>(null)
   const [isSummarizing, setIsSummarizing] = useState(false)
+
+  // Context menu state
+  const [contextMenuOpen, setContextMenuOpen] = useState(false)
+  const [contextMenuFilePath, setContextMenuFilePath] = useState<string | null>(null)
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 })
 
   // 优化复选框处理 - 不依赖 selectedFiles 状态
   const handleCheckboxChange = useCallback((filePath: string, checked: boolean) => {
@@ -380,6 +383,46 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     }
   }, [removeFileFromIndex])
 
+  // Context menu handlers
+  const handleContextMenu = useCallback((event: React.MouseEvent, filePath: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenuPosition({ x: event.clientX, y: event.clientY })
+    setContextMenuFilePath(filePath)
+    setContextMenuOpen(true)
+  }, [])
+
+  // Handle both right-click and Ctrl+click (for macOS)
+  const handleMouseEvent = useCallback((event: React.MouseEvent, filePath: string) => {
+    // Check for right-click or Ctrl+click (macOS equivalent)
+    if (event.button === 2 || (event.ctrlKey && event.button === 0)) {
+      event.preventDefault()
+      event.stopPropagation()
+      setContextMenuPosition({ x: event.clientX, y: event.clientY })
+      setContextMenuFilePath(filePath)
+      setContextMenuOpen(true)
+    }
+  }, [])
+
+  const handleContextMenuClose = useCallback(() => {
+    setContextMenuOpen(false)
+    setContextMenuFilePath(null)
+  }, [])
+
+  // Close context menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && contextMenuOpen) {
+        handleContextMenuClose()
+      }
+    }
+    
+    if (contextMenuOpen) {
+      document.addEventListener('keydown', handleKeyDown)
+      return () => document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenuOpen, handleContextMenuClose])
+
   // 优化的行组件 - 使用 flex 布局替代表格，实现完全紧凑的布局
   const OptimizedTableCells = React.memo(({ 
     file, 
@@ -407,10 +450,22 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm truncate leading-none">
-              {file.file_name}
+              <span 
+                className="cursor-pointer hover:text-primary transition-colors"
+                onClick={(e) => handleOpenFile(file.file_path, e)}
+                title="点击打开文件"
+              >
+                {file.file_name}
+              </span>
             </div>
-            <div className="text-xs text-muted-foreground truncate leading-none opacity-70">
-              {file.file_path}
+            <div className="text-xs text-muted-foreground truncate leading-none opacity-70 mt-1.5">
+              <span 
+                className="cursor-pointer hover:text-foreground hover:opacity-100 transition-colors"
+                onClick={(e) => handleOpenDirectory(file.file_path, e)}
+                title="点击打开文件所在位置"
+              >
+                {file.file_path}
+              </span>
             </div>
           </div>
         </div>
@@ -485,23 +540,6 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           </TooltipContent>
         </Tooltip>
 
-        {/* 打开文件按钮 */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={(e) => handleOpenFile(filePath, e)}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>打开</p>
-          </TooltipContent>
-        </Tooltip>
-
         {/* 复制文件按钮 */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -538,10 +576,6 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => handleOpenDirectory(filePath, e)}>
-              <Folder className="mr-2 h-4 w-4" />
-              打开目录
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handleRenameClick(filePath)}>
               <Edit className="mr-2 h-4 w-4" />
               重命名
@@ -675,8 +709,11 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                 }}
                 className={cn(
                   "hover:bg-muted/50",
-                  selectedFilesSet.has(file.file_path) && "bg-primary/5"
+                  selectedFilesSet.has(file.file_path) && "bg-primary/5",
+                  contextMenuOpen && contextMenuFilePath === file.file_path && "bg-muted/50"
                 )}
+                onContextMenu={(e) => handleContextMenu(e, file.file_path)}
+                onMouseDown={(e) => handleMouseEvent(e, file.file_path)}
               >
                 <OptimizedTableCells
                   file={file}
@@ -742,32 +779,30 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
         <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col p-0 gap-0 [&>button]:hidden">
           <DialogHeader className="px-2 py-3 border-b flex-shrink-0">
             <DialogTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
                   <Bot className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-semibold">AI速览</span>
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-lg font-semibold flex-shrink-0">AI速览</span>
                     {summaryFilePath && (
-                      <div className="flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                        <span className="text-base font-medium text-foreground">
+                      <div className="flex items-center gap-1 min-w-0 flex-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                        <span className="text-base font-medium text-foreground truncate">
                           {summaryFilePath.split('/').pop()}
                         </span>
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
                     <span className="flex-shrink-0">智能文档分析助手</span>
                     {summaryFilePath && (
                       <>
                         <span className="flex-shrink-0">•</span>
-                        <div className="overflow-x-auto scrollbar-hide flex-1 min-w-0">
-                          <span className="whitespace-nowrap inline-block">
-                            {summaryFilePath}
-                          </span>
-                        </div>
+                        <span className="truncate min-w-0 flex-1">
+                          {summaryFilePath}
+                        </span>
                       </>
                     )}
                   </div>
@@ -795,7 +830,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                   <FinalStreamingRenderer 
                     key={summaryFilePath}
                     stream={summaryStream} 
-                    className=""
+                    className="text-justify"
                     placeholder="AI正在分析文件内容..."
                     onComplete={() => setIsSummarizing(false)}
                     autoScroll={true}
@@ -854,6 +889,82 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Context Menu */}
+      {contextMenuOpen && contextMenuFilePath && (
+        <>
+          {/* Backdrop to close menu when clicking outside */}
+          <div 
+            className="fixed inset-0 z-[9998]" 
+            onClick={handleContextMenuClose}
+          />
+          {/* Context Menu */}
+          <div
+            className="fixed z-[9999] bg-popover border rounded-md shadow-lg py-1 w-48"
+            style={{
+              left: contextMenuPosition.x,
+              top: contextMenuPosition.y,
+            }}
+          >
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center"
+              onClick={() => {
+                handlePreviewClick(contextMenuFilePath)
+                handleContextMenuClose()
+              }}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              预览
+            </button>
+            
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center"
+              onClick={() => {
+                handleSummarizeClick(contextMenuFilePath)
+                handleContextMenuClose()
+              }}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              AI速览
+            </button>
+            
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center"
+              onClick={() => {
+                handleCopyClick(contextMenuFilePath)
+                handleContextMenuClose()
+              }}
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              复制
+            </button>
+            
+            <div className="border-t my-1" />
+            
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground flex items-center"
+              onClick={() => {
+                handleRenameClick(contextMenuFilePath)
+                handleContextMenuClose()
+              }}
+            >
+              <Edit className="mr-2 h-4 w-4" />
+              重命名
+            </button>
+            
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground text-red-600 hover:text-red-600 flex items-center"
+              onClick={() => {
+                handleDeleteClick(contextMenuFilePath)
+                handleContextMenuClose()
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              删除
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 })

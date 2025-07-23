@@ -73,7 +73,7 @@ interface MatchPosition {
   keywordIndex: number
 }
 
-// 内存优化的匹配位置计算函数
+// 修复的匹配位置计算函数
 const calculateMatches = (text: string, keywords: string[]): {
   baseHtml: string,
   matchesByKeyword: Array<{keyword: string, matches: MatchPosition[]}>
@@ -91,13 +91,10 @@ const calculateMatches = (text: string, keywords: string[]): {
     }
   }
 
-  // 使用完整文件内容，不限制匹配数量
-  const limitedText = text // 使用完整文本
-
   const matchesByKeyword: Array<{keyword: string, matches: MatchPosition[]}> = []
   const allMatches: MatchPosition[] = []
   
-  // 为每个关键词计算匹配位置
+  // 为每个关键词计算匹配位置（基于原始文本）
   keywords.forEach((keyword, keywordIndex) => {
     if (!keyword || keyword.length < 2) return
     
@@ -106,7 +103,7 @@ const calculateMatches = (text: string, keywords: string[]): {
     const matches: MatchPosition[] = []
     
     let match
-    while ((match = regex.exec(limitedText)) !== null) {
+    while ((match = regex.exec(text)) !== null) {
       const matchPos: MatchPosition = {
         start: match.index,
         end: match.index + match[0].length,
@@ -128,62 +125,79 @@ const calculateMatches = (text: string, keywords: string[]): {
     })
   })
 
-  // 记录匹配统计信息，不限制数量
   if (allMatches.length > 0) {
     console.log(`找到 ${allMatches.length} 个匹配项，开始处理高亮显示`)
   }
 
-  // 生成基础HTML，使用更高效的方法
-  let processedText = limitedText
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-
-  // 按位置排序并从后往前替换，避免位置偏移
-  allMatches.sort((a, b) => b.start - a.start)
+  // 处理重叠匹配：创建一个标记数组来跟踪每个字符的高亮状态
+  const charHighlights = new Array(text.length).fill(null)
   
-  // 处理所有匹配项，不限制数量
-  const BATCH_SIZE = 200 // 增大批大小以提高效率
-  try {
-    // 统一使用分批处理，避免单次处理过多导致阻塞
-    for (let i = 0; i < allMatches.length; i += BATCH_SIZE) {
-      const batch = allMatches.slice(i, i + BATCH_SIZE)
-      
-      batch.forEach((match) => {
-        try {
-          const colorConfig = HIGHLIGHT_COLORS[match.keywordIndex % HIGHLIGHT_COLORS.length]
-          const before = processedText.substring(0, match.start)
-          const highlighted = `<span class="search-highlight keyword-${match.keywordIndex}" data-keyword-index="${match.keywordIndex}" style="background-color: ${colorConfig.background}; color: ${colorConfig.text}; font-weight: 700; border-radius: 0.125rem; padding: 0 2px;">${match.text}</span>`
-          const after = processedText.substring(match.end)
-          processedText = before + highlighted + after
-        } catch (matchError) {
-          console.warn('跳过有问题的匹配:', matchError)
-        }
-      })
-      
-      // 每处理一定数量后显示进度
-      if (i % (BATCH_SIZE * 5) === 0 && i > 0) {
-        const progress = ((i / allMatches.length) * 100).toFixed(1)
-        console.log(`高亮处理进度: ${progress}% (${i}/${allMatches.length})`)
+  // 按优先级处理匹配（先处理的关键词优先级更高）
+  allMatches.forEach((match) => {
+    for (let i = match.start; i < match.end; i++) {
+      if (charHighlights[i] === null) {
+        charHighlights[i] = match.keywordIndex
       }
     }
+  })
+
+  // 构建最终的HTML字符串
+  let result = ''
+  let i = 0
+  
+  while (i < text.length) {
+    const currentHighlight = charHighlights[i]
     
-    console.log(`高亮处理完成，总共处理了 ${allMatches.length} 个匹配项`)
-  } catch (batchError) {
-    console.error('批处理失败:', batchError)
-    // 如果批处理失败，返回基本的转义文本
-    processedText = limitedText
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;')
+    if (currentHighlight !== null) {
+      // 开始一个高亮区域
+      const colorConfig = HIGHLIGHT_COLORS[currentHighlight % HIGHLIGHT_COLORS.length]
+      let highlightEnd = i
+      
+      // 找到这个高亮区域的结束位置
+      while (highlightEnd < text.length && charHighlights[highlightEnd] === currentHighlight) {
+        highlightEnd++
+      }
+      
+      // 提取并转义高亮文本
+      const highlightText = text.substring(i, highlightEnd)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+      
+      // 添加高亮标签
+      result += `<span class="search-highlight keyword-${currentHighlight}" data-keyword-index="${currentHighlight}" style="background-color: ${colorConfig.background}; color: ${colorConfig.text}; font-weight: 700; border-radius: 0.125rem; padding: 0 2px;">${highlightText}</span>`
+      
+      i = highlightEnd
+    } else {
+      // 普通字符，进行HTML转义
+      const char = text[i]
+      switch (char) {
+        case '&':
+          result += '&amp;'
+          break
+        case '<':
+          result += '&lt;'
+          break
+        case '>':
+          result += '&gt;'
+          break
+        case '"':
+          result += '&quot;'
+          break
+        case "'":
+          result += '&#39;'
+          break
+        default:
+          result += char
+      }
+      i++
+    }
   }
 
   return {
-    baseHtml: processedText.replace(/\n/g, '<br>'),
+    baseHtml: result.replace(/\n/g, '<br>'),
     matchesByKeyword
   }
 }
