@@ -41,6 +41,7 @@ const customElectronAPI: CustomElectronAPI = {
     },
     openMainWindow: (query: string, searchType: string) => 
       ipcRenderer.invoke('search:open-main-window', query, searchType),
+    hide: () => ipcRenderer.invoke('search:hide-window'),
     notifyReady: () => ipcRenderer.send('search-window-ready')
   },
   platform: {

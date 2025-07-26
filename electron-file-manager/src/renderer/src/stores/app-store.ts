@@ -38,8 +38,12 @@ interface AppStore extends AppState {
   settings: SettingsData
   settingsLoading: boolean
   
+  // Backend initialization state
+  backendInitialized: boolean
+  
   // Actions
   setBackendRunning: (running: boolean) => void
+  setBackendInitialized: (initialized: boolean) => void
   setCurrentDirectory: (directory: string | null) => void
   setSearchResults: (results: FileItem[]) => void
   setSelectedFiles: (files: string[]) => void
@@ -98,6 +102,7 @@ export const useAppStore = create<AppStore>()(
     (set, get) => ({
       // Initial state
       isBackendRunning: false,
+      backendInitialized: false,
       currentDirectory: null,
       searchResults: [],
       selectedFiles: [],
@@ -109,6 +114,7 @@ export const useAppStore = create<AppStore>()(
 
       // Actions
       setBackendRunning: (running) => set({ isBackendRunning: running }),
+      setBackendInitialized: (initialized) => set({ backendInitialized: initialized }),
       
       setCurrentDirectory: (directory) => set({ currentDirectory: directory }),
       

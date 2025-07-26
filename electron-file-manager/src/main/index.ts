@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { PythonBridge } from './python-bridge'
@@ -10,6 +10,8 @@ const iconPath = join(__dirname, '../../resources/icon.png')
 
 let mainWindow: BrowserWindow
 let searchWindow: BrowserWindow | null = null
+let searchWindowShouldShow = false  // 跟踪搜索窗口是否应该显示
+let tray: Tray | null = null
 let pythonBridge: PythonBridge
 let fileOperations: FileOperations
 let settingsStore: SettingsStore
@@ -35,6 +37,25 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    updateTrayMenu()  // 更新托盘菜单
+  })
+
+  // 处理主窗口关闭事件：直接退出应用
+  mainWindow.on('close', () => {
+    // 停止Python后端服务
+    if (pythonBridge) {
+      pythonBridge.stop()
+    }
+    // 退出应用程序
+    app.quit()
+  })
+
+  // 窗口互斥：主窗口激活时隐藏搜索窗口
+  mainWindow.on('focus', () => {
+    if (searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
+      searchWindow.hide()
+      searchWindowShouldShow = false
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -76,12 +97,25 @@ app.whenReady().then(() => {
   // Setup global shortcuts
   setupGlobalShortcuts()
 
+  // Create system tray
+  createTray()
+
+  // Create search window at startup (hidden by default)
+  createSearchWindow()
+
   createWindow()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      // 如果主窗口存在但被隐藏，显示它
+      mainWindow.show()
+      mainWindow.focus()
+      updateTrayMenu()  // 更新托盘菜单
+    }
   })
 })
 
@@ -183,6 +217,12 @@ function setupIpcHandlers(): void {
 
   // Search window management
   ipcMain.handle('search:open-main-window', async (_, query: string, searchType: string) => {
+    // 窗口互斥：先隐藏搜索窗口
+    if (searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
+      searchWindow.hide()
+      searchWindowShouldShow = false
+    }
+    
     // Show and focus the main window
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) {
@@ -197,20 +237,71 @@ function setupIpcHandlers(): void {
     }
     return { success: false, error: 'Main window not available' }
   })
+
+  // Hide search window
+  ipcMain.handle('search:hide-window', async () => {
+    if (searchWindow && !searchWindow.isDestroyed()) {
+      searchWindow.hide()
+      searchWindowShouldShow = false  // 重置显示标志
+      return { success: true }
+    }
+    return { success: false, error: 'Search window not available' }
+  })
+}
+
+function toggleSearchWindow(): void {
+  // 如果窗口存在且可见，则隐藏；否则显示
+  if (searchWindow && !searchWindow.isDestroyed()) {
+    if (searchWindow.isVisible()) {
+      // 窗口当前可见，隐藏它
+      searchWindow.hide()
+      searchWindowShouldShow = false
+    } else {
+      // 窗口存在但隐藏，显示它
+      showSearchWindow()
+    }
+  } else {
+    // 窗口不存在，创建并显示
+    showSearchWindow()
+  }
+}
+
+function showSearchWindow(): void {
+  searchWindowShouldShow = true  // 标记应该显示
+  
+  // 窗口互斥：搜索窗口激活时隐藏主窗口
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.hide()
+  }
+  
+  if (searchWindow && !searchWindow.isDestroyed()) {
+    // macOS 特定优化 - 确保覆盖全屏应用而不切换桌面
+    if (process.platform === 'darwin') {
+      // 使用最高层级覆盖全屏应用
+      searchWindow.setAlwaysOnTop(true, 'screen-saver')
+      // 不设置visibleOnAllWorkspaces，避免桌面切换
+    } else {
+      searchWindow.setAlwaysOnTop(true, 'floating')
+    }
+    
+    searchWindow.show()
+    searchWindow.focus()
+  } else {
+    // If window was destroyed, recreate it (it will auto-show because searchWindowShouldShow = true)
+    createSearchWindow()
+  }
 }
 
 function createSearchWindow(): void {
+  // Don't create if already exists
   if (searchWindow && !searchWindow.isDestroyed()) {
-    // 确保窗口在最高层级显示
-    searchWindow.setAlwaysOnTop(true, 'screen-saver')
-    searchWindow.show()
-    searchWindow.focus()
     return
   }
 
+  // Create new search window
   searchWindow = new BrowserWindow({
-    width: 600,
-    height: 80,
+    width: 516,
+    height: 56,
     show: false,
     frame: false,
     transparent: true,
@@ -225,7 +316,10 @@ function createSearchWindow(): void {
     // macOS 特定设置，确保能覆盖全屏应用
     ...(process.platform === 'darwin' ? {
       fullscreenable: false,
-      visibleOnAllWorkspaces: true
+      visibleOnAllWorkspaces: false,  // 不要在所有工作区显示，而是覆盖当前全屏应用
+      roundedCorners: false,
+      hasShadow: false,
+      type: 'panel'  // 使用panel类型以覆盖全屏应用
     } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -245,7 +339,14 @@ function createSearchWindow(): void {
   searchWindow.on('ready-to-show', () => {
     // 设置最高层级，确保能覆盖全屏应用
     if (searchWindow && !searchWindow.isDestroyed()) {
-      searchWindow.setAlwaysOnTop(true, 'screen-saver')
+      searchWindow.setAlwaysOnTop(true, 'floating')
+      
+      // macOS 特定优化，确保能覆盖全屏应用
+      if (process.platform === 'darwin') {
+        // 不设置visibleOnAllWorkspaces，让它显示在当前桌面上
+        // 使用最高层级以覆盖全屏应用
+        searchWindow.setAlwaysOnTop(true, 'screen-saver')
+      }
     }
     // 不要立即显示窗口，等待渲染完成
     searchWindow?.webContents.send('show-search-overlay')
@@ -255,10 +356,21 @@ function createSearchWindow(): void {
   // 监听渲染进程的渲染完成消息 (每次创建窗口时重新监听)
   const handleSearchReady = () => {
     if (searchWindow && !searchWindow.isDestroyed()) {
-      // 再次确保最高层级设置
-      searchWindow.setAlwaysOnTop(true, 'screen-saver')
-      searchWindow.show()
-      searchWindow.focus()
+      // 设置窗口层级
+      if (process.platform === 'darwin') {
+        searchWindow.setAlwaysOnTop(true, 'screen-saver')
+      } else {
+        searchWindow.setAlwaysOnTop(true, 'floating')
+      }
+      
+      // 只有在应该显示且窗口当前不可见时才显示窗口
+      if (searchWindowShouldShow && !searchWindow.isVisible()) {
+        searchWindow.show()
+        searchWindow.focus()
+        console.log('Search window shown after ready')
+      } else {
+        console.log('Search window ready but kept hidden until activated')
+      }
     }
   }
   
@@ -266,10 +378,11 @@ function createSearchWindow(): void {
   ipcMain.removeListener('search-window-ready', handleSearchReady)
   ipcMain.once('search-window-ready', handleSearchReady)
 
-  // Hide window when it loses focus
+  // 外部点击隐藏：当搜索窗口失去焦点时隐藏
   searchWindow.on('blur', () => {
-    if (searchWindow && !searchWindow.isDestroyed()) {
+    if (searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
       searchWindow.hide()
+      searchWindowShouldShow = false
     }
   })
 
@@ -283,11 +396,11 @@ function createSearchWindow(): void {
 
 // Setup global shortcuts
 function setupGlobalShortcuts(): void {
-  // Register global hotkey for search overlay (Alt+Shift+F on Windows/Linux, Option+Shift+F on macOS)
-  const searchShortcut = process.platform === 'darwin' ? 'Option+Shift+F' : 'Alt+Shift+F'
+  // Register global hotkey for search overlay (Alt+F on Windows/Linux, Option+F on macOS)
+  const searchShortcut = process.platform === 'darwin' ? 'Option+F' : 'Alt+F'
   
   const isRegistered = globalShortcut.register(searchShortcut, () => {
-    createSearchWindow()
+    toggleSearchWindow()
   })
 
   if (!isRegistered) {
@@ -297,9 +410,113 @@ function setupGlobalShortcuts(): void {
   }
 }
 
+// Create system tray
+function createTray(): void {
+  // Create tray icon
+  const trayIcon = nativeImage.createFromPath(iconPath)
+  
+  // Resize icon for tray (16x16 for better display on different platforms)
+  const resizedIcon = trayIcon.resize({ width: 16, height: 16 })
+  
+  tray = new Tray(resizedIcon)
+  
+  // Set tooltip
+  tray.setToolTip('File Search - 文件搜索')
+  
+  // Create context menu
+  updateTrayMenu()
+  
+  // Handle left click on tray icon
+  tray.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isVisible()) {
+        mainWindow.hide()
+      } else {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    }
+  })
+  
+  // Handle right click on tray icon (Windows/Linux)
+  tray.on('right-click', () => {
+    updateTrayMenu()
+  })
+}
+
+// Update tray context menu
+function updateTrayMenu(): void {
+  if (!tray) return
+  
+  const isMainWindowVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+  
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: isMainWindowVisible ? '隐藏主窗口' : '显示主窗口',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          if (isMainWindowVisible) {
+            mainWindow.hide()
+          } else {
+            mainWindow.show()
+            mainWindow.focus()
+          }
+        }
+      }
+    },
+    {
+      label: '搜索窗口',
+      click: () => {
+        toggleSearchWindow()
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '设置',
+      click: () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show()
+          mainWindow.focus()
+          // 可以发送消息到渲染进程打开设置页面
+          mainWindow.webContents.send('open-settings')
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '关于',
+      click: () => {
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: '关于 File Search',
+          message: 'File Search - 文件搜索工具',
+          detail: '一个高效的本地文件搜索应用程序\n支持多种文件格式的内容搜索',
+          buttons: ['确定']
+        })
+      }
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        // 真正退出应用
+        if (pythonBridge) {
+          pythonBridge.stop()
+        }
+        app.quit()
+      }
+    }
+  ])
+  
+  tray.setContextMenu(contextMenu)
+}
+
 // Clean up global shortcuts when app is quitting
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  if (tray) {
+    tray.destroy()
+  }
 })
 
 // In this file you can include the rest of your app"s specific main process

@@ -33,6 +33,7 @@ export interface ElectronSearchOverlayAPI {
   onShow: (callback: () => void) => () => void
   onSetSearchWindow: (callback: (isSearchWindow: boolean) => void) => () => void
   openMainWindow: (query: string, searchType: string) => Promise<{ success: boolean; error?: string }>
+  hide: () => Promise<{ success: boolean; error?: string }>
   notifyReady: () => void
 }
 
@@ -52,5 +53,13 @@ export interface CustomElectronAPI {
 declare global {
   interface Window {
     electronAPI: CustomElectronAPI
+    electron: {
+      ipcRenderer: {
+        on: (channel: string, callback: (...args: any[]) => void) => void
+        removeListener: (channel: string, callback: (...args: any[]) => void) => void
+        send: (channel: string, ...args: any[]) => void
+        invoke: (channel: string, ...args: any[]) => Promise<any>
+      }
+    }
   }
 }

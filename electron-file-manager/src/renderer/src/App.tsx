@@ -75,38 +75,30 @@ function App() {
   }, [])
 
 
-  // 启动时自动启动后端服务
+  // 启动时自动启动后端服务（仅主窗口）
   useEffect(() => {
+    // 只有主窗口才进行后端初始化，搜索窗口跳过
+    if (isSearchWindow) {
+      console.log('[SearchWindow] Skipping backend initialization')
+      return
+    }
+    
     const initializeBackend = async () => {
       try {
-        console.log('Auto starting backend service...')
+        console.log('[MainWindow] Auto starting backend service...')
         const result = await window.electronAPI.python.start()
         if (result.success) {
           setBackendRunning(true)
-          console.log('Backend service started successfully')
+          console.log('[MainWindow] Backend service started successfully')
           
-          // 后端启动成功后，立即加载统计信息
-          setTimeout(async () => {
-            try {
-              console.log('Loading initial stats...')
-              const stats = await getStats()
-              if (stats) {
-                setStats(stats)
-                console.log('Initial stats loaded:', stats)
-              } else {
-                console.log('Stats response is empty, setting default values')
-                // 设置默认的空统计信息
-                setStats({
-                  success: true,
-                  document_count: 0,
-                  total_content_size: 0,
-                  database_size: 0,
-                  file_types: {}
-                })
-              }
-            } catch (error) {
-              console.error('Failed to load initial stats:', error)
-              // 设置默认的空统计信息
+          // 后端启动成功后，加载统计信息
+          try {
+            console.log('🔍 [MainWindow] Loading initial stats from backend initialization...')
+            const stats = await getStats()
+            if (stats) {
+              setStats(stats)
+              console.log('✅ [MainWindow] Initial stats loaded successfully')
+            } else {
               setStats({
                 success: true,
                 document_count: 0,
@@ -115,11 +107,19 @@ function App() {
                 file_types: {}
               })
             }
-          }, 2000) // 增加等待时间确保后端完全启动
+          } catch (error) {
+            console.error('[MainWindow] Failed to load initial stats:', error)
+            setStats({
+              success: true,
+              document_count: 0,
+              total_content_size: 0,
+              database_size: 0,
+              file_types: {}
+            })
+          }
         } else {
-          console.error('Failed to start backend:', result.error)
+          console.error('[MainWindow] Failed to start backend:', result)
           setBackendRunning(false)
-          // 后端启动失败时也设置默认统计信息
           setStats({
             success: false,
             document_count: 0,
@@ -130,9 +130,8 @@ function App() {
           })
         }
       } catch (error) {
-        console.error('Failed to initialize backend:', error)
+        console.error('[MainWindow] Failed to initialize backend:', error)
         setBackendRunning(false)
-        // 初始化失败时也设置默认统计信息
         setStats({
           success: false,
           document_count: 0,
@@ -145,7 +144,7 @@ function App() {
     }
 
     initializeBackend()
-  }, [setBackendRunning, getStats, setStats])
+  }, [isSearchWindow]) // 添加 isSearchWindow 依赖
 
   const handleSelectDirectory = useCallback(async () => {
     try {
@@ -174,8 +173,10 @@ function App() {
               console.log(`Auto-indexed ${result.indexed_files} files`)
               toast.success(`成功索引 ${result.indexed_files} 个文件`, { duration: 5000 })
               // 刷新统计信息
+              console.log('🔍 [App.tsx] Loading stats after directory indexing...')
               const stats = await getStats()
               setStats(stats)
+              console.log('✅ [App.tsx] Stats refreshed after indexing')
             } else {
               console.error('Auto-indexing failed:', result.error)
               toast.error(`索引失败: ${result.error}`, { duration: 8000 })
@@ -325,13 +326,29 @@ function App() {
     }
   }, [performImmediateSearch, handleOpenChatAssistantWithQuery])
 
-  // 设置搜索窗口的透明背景（在组件顶层调用useEffect）
+  // 设置搜索窗口的透明背景和清除所有边距/内边距
   useEffect(() => {
     if (isSearchWindow) {
+      // 设置透明背景
       document.body.style.background = 'transparent'
       document.body.style.backgroundColor = 'transparent'
       document.documentElement.style.background = 'transparent'
       document.documentElement.style.backgroundColor = 'transparent'
+      
+      // 清除所有边距和内边距
+      document.body.style.margin = '0'
+      document.body.style.padding = '0'
+      document.documentElement.style.margin = '0'
+      document.documentElement.style.padding = '0'
+      
+      // 确保root元素也无边距
+      const rootElement = document.getElementById('root')
+      if (rootElement) {
+        rootElement.style.margin = '0'
+        rootElement.style.padding = '0'
+        rootElement.style.background = 'transparent'
+        rootElement.style.backgroundColor = 'transparent'
+      }
       
       // 清理函数：组件卸载时或不再是搜索窗口时恢复原来的样式
       return () => {
@@ -339,6 +356,18 @@ function App() {
         document.body.style.backgroundColor = ''
         document.documentElement.style.background = ''
         document.documentElement.style.backgroundColor = ''
+        document.body.style.margin = ''
+        document.body.style.padding = ''
+        document.documentElement.style.margin = ''
+        document.documentElement.style.padding = ''
+        
+        const rootElement = document.getElementById('root')
+        if (rootElement) {
+          rootElement.style.margin = ''
+          rootElement.style.padding = ''
+          rootElement.style.background = ''
+          rootElement.style.backgroundColor = ''
+        }
       }
     }
   }, [isSearchWindow])
@@ -346,39 +375,38 @@ function App() {
   // If this is a search window, only show the search overlay
   if (isSearchWindow) {
     return (
-      <div className="h-screen w-full" style={{ background: 'transparent', backgroundColor: 'transparent' }}>
-        <SearchOverlay
-          isVisible={true}
-          onClose={() => window.close()}
-          onOpenChatAssistant={async (query) => {
-            try {
-              // 智能搜索也通过IPC打开主界面
-              console.log('Smart search via IPC:', query)
-              const result = await window.electronAPI.searchOverlay.openMainWindow(query, 'smart')
-              if (!result.success) {
-                console.error('Failed to open main window for smart search:', result.error)
-              }
-            } catch (error) {
-              console.error('Error opening main window for smart search:', error)
+      <SearchOverlay
+        isVisible={true}
+        onClose={() => {
+          // Hide the window instead of closing it for faster reactivation
+          window.electronAPI?.searchOverlay?.hide?.() || window.close()
+        }}
+        onOpenChatAssistant={async (query) => {
+          try {
+            // 智能搜索也通过IPC打开主界面
+            console.log('Smart search via IPC:', query)
+            const result = await window.electronAPI.searchOverlay.openMainWindow(query, 'smart')
+            if (!result.success) {
+              console.error('Failed to open main window for smart search:', result.error)
             }
-            // 无论IPC是否成功，都关闭搜索窗口（因为onClose已经在executeSearch中调用）
-            window.close()
-          }}
-          onSearchAndOpenMain={async (query, searchType) => {
-            try {
-              // 通过 IPC 打开主界面并执行搜索
-              const result = await window.electronAPI.searchOverlay.openMainWindow(query, searchType)
-              if (!result.success) {
-                console.error('Failed to open main window:', result.error)
-              }
-            } catch (error) {
-              console.error('Error opening main window:', error)
+          } catch (error) {
+            console.error('Error opening main window for smart search:', error)
+          }
+          // Window is already hidden by executeSearch in SearchOverlay
+        }}
+        onSearchAndOpenMain={async (query, searchType) => {
+          try {
+            // 通过 IPC 打开主界面并执行搜索
+            const result = await window.electronAPI.searchOverlay.openMainWindow(query, searchType)
+            if (!result.success) {
+              console.error('Failed to open main window:', result.error)
             }
-            // 无论IPC是否成功，都关闭搜索窗口（因为onClose已经在executeSearch中调用）
-            window.close()
-          }}
-        />
-      </div>
+          } catch (error) {
+            console.error('Error opening main window:', error)
+          }
+          // Window is already hidden by executeSearch in SearchOverlay
+        }}
+      />
     )
   }
 

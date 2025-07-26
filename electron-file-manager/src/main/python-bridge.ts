@@ -1,6 +1,12 @@
 import { spawn, ChildProcess } from 'child_process'
 import { join } from 'path'
+import { app } from 'electron'
+import { existsSync } from 'fs'
 import axios, { AxiosRequestConfig } from 'axios'
+
+// 全局单例标记，防止多个窗口同时启动
+let globalPythonStarting = false
+let globalPythonStarted = false
 
 export class PythonBridge {
   private pythonProcess: ChildProcess | null = null
@@ -10,24 +16,54 @@ export class PythonBridge {
   private readonly baseUrl = `http://${this.host}:${this.port}`
 
   async start(): Promise<{ success: boolean; message: string }> {
-    if (this.isStarted) {
+    // 全局单例检查：防止多个窗口同时启动
+    if (globalPythonStarted) {
+      console.log('Python backend already running globally, skipping start')
       return { success: true, message: 'Python backend already running' }
     }
+    
+    if (globalPythonStarting) {
+      console.log('Python backend is starting by another window, waiting...')
+      // 等待其他窗口完成启动
+      for (let i = 0; i < 30; i++) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        if (globalPythonStarted) {
+          return { success: true, message: 'Python backend started by another window' }
+        }
+      }
+      return { success: false, message: 'Timeout waiting for Python backend to start' }
+    }
+    
+    if (this.isStarted && this.pythonProcess && !this.pythonProcess.killed) {
+      console.log('Python backend already running, skipping start')
+      return { success: true, message: 'Python backend already running' }
+    }
+    
+    // 标记正在启动
+    globalPythonStarting = true
+
+    // 重置状态，清理之前的进程
+    if (this.pythonProcess && !this.pythonProcess.killed) {
+      this.pythonProcess.kill('SIGTERM')
+      this.pythonProcess = null
+    }
+    this.isStarted = false
 
     try {
-      // Path to the Python backend (go up to filesearch directory)
-      const pythonBackendPath = join(__dirname, '../../..')
+      const { command, args, cwd } = this.getPythonCommand()
       
-      console.log('🔍 DEBUG: Starting Python backend from:', pythonBackendPath)
-      console.log('🔍 DEBUG: Full command: python api_server.py --host', this.host, '--port', this.port.toString())
-      console.log('🔍 DEBUG: Working directory:', pythonBackendPath)
-      console.log('🔍 DEBUG: Default database path will be:', join(pythonBackendPath, 'documents.db'))
+      console.log('🔍 Starting Python backend...')
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Command:', command)
+        console.log('Args:', args)
+        console.log('Working directory:', cwd)
+      }
       
       // Start the Python API server
-      this.pythonProcess = spawn('python', ['api_server.py', '--host', this.host, '--port', this.port.toString()], {
-        cwd: pythonBackendPath,
+      this.pythonProcess = spawn(command, args, {
+        cwd,
         stdio: 'pipe',
-        env: { ...process.env, PYTHONPATH: pythonBackendPath }
+        env: { ...process.env, PYTHONPATH: cwd }
       })
 
       // Handle process events
@@ -41,23 +77,34 @@ export class PythonBridge {
         this.isStarted = false
       })
 
-      // Log stdout and stderr
+      // Log stdout and stderr (reduce verbosity in production)
       this.pythonProcess.stdout?.on('data', (data) => {
-        console.log('Python stdout:', data.toString())
+        const output = data.toString().trim()
+        if (output && (process.env.NODE_ENV === 'development' || output.includes('ERROR') || output.includes('WARN'))) {
+          console.log('Python stdout:', output)
+        }
       })
 
       this.pythonProcess.stderr?.on('data', (data) => {
-        console.error('Python stderr:', data.toString())
+        const output = data.toString().trim()
+        // Only log important stderr messages
+        if (output && !output.includes('Loading model cost') && !output.includes('Prefix dict has been built')) {
+          console.error('Python stderr:', output)
+        }
       })
 
       // Wait for the server to be ready
       await this.waitForServer()
       
       this.isStarted = true
+      globalPythonStarted = true
+      globalPythonStarting = false
       return { success: true, message: 'Python backend started successfully' }
     } catch (error) {
       console.error('Failed to start Python backend:', error)
       this.isStarted = false
+      globalPythonStarted = false
+      globalPythonStarting = false
       // 清理进程
       if (this.pythonProcess) {
         this.pythonProcess.kill()
@@ -75,6 +122,8 @@ export class PythonBridge {
     try {
       this.pythonProcess.kill('SIGTERM')
       this.isStarted = false
+      globalPythonStarted = false
+      globalPythonStarting = false
       this.pythonProcess = null
       return { success: true, message: 'Python backend stopped successfully' }
     } catch (error) {
@@ -94,7 +143,7 @@ export class PythonBridge {
 
     try {
       // Set dynamic timeout based on operation type
-      let timeout = 30000 // Default 30 seconds
+      let timeout = 60000 // Default 30 seconds
       
       // For indexing operations, use much longer timeout (20 minutes)
       if (options.url?.includes('/index')) {
@@ -109,7 +158,9 @@ export class PythonBridge {
         timeout = 60000 // 1 minute for search operations
       }
       
-      console.log(`Making API request to ${options.url} with timeout: ${timeout}ms (${timeout/1000}s)`)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Making API request to ${options.url} with timeout: ${timeout}ms (${timeout/1000}s)`)
+      }
       
       const response = await axios({
         ...options,
@@ -123,19 +174,64 @@ export class PythonBridge {
     }
   }
 
-  private async waitForServer(maxRetries = 20, retryDelay = 1000): Promise<void> {
+  private getPythonCommand(): { command: string; args: string[]; cwd: string } {
+    // 优先使用打包的可执行文件
+    const isDevelopment = !app.isPackaged
+    const appPath = app.getAppPath()
+    
+    if (!isDevelopment) {
+      // 生产环境：使用打包的可执行文件
+      const resourcesPath = process.resourcesPath || join(appPath, '../..')
+      const pythonDir = join(resourcesPath, 'python')
+      const executableName = process.platform === 'win32' ? 'filesearch-backend.exe' : 'filesearch-backend'
+      const executablePath = join(pythonDir, executableName)
+      
+      console.log('🔍 Looking for packaged executable:', executablePath)
+      
+      if (existsSync(executablePath)) {
+        console.log('✅ Found packaged Python executable')
+        return {
+          command: executablePath,
+          args: ['--host', this.host, '--port', this.port.toString()],
+          cwd: pythonDir
+        }
+      } else {
+        console.log('⚠️ Packaged executable not found, falling back to system Python')
+      }
+    }
+    
+    // 开发环境或回退方案：使用系统 Python
+    const pythonBackendPath = isDevelopment 
+      ? join(__dirname, '../../..') 
+      : join(process.resourcesPath, '../../../..')
+    
+    console.log('🔍 Using system Python from:', pythonBackendPath)
+    
+    return {
+      command: '/Users/quant/miniforge3/bin/python',
+      args: ['api_server.py', '--host', this.host, '--port', this.port.toString()],
+      cwd: pythonBackendPath
+    }
+  }
+
+  private async waitForServer(maxRetries = 15, retryDelay = 2000): Promise<void> {
     console.log('Waiting for Python server to start...')
     for (let i = 0; i < maxRetries; i++) {
       try {
-        const response = await axios.get(`${this.baseUrl}/health`, { timeout: 3000 })
-        console.log('Python server is ready:', response.data)
+        await axios.get(`${this.baseUrl}/health`, { timeout: 5000 })
+        console.log('✅ Python server is ready')
         return
       } catch (error) {
-        console.log(`Server check attempt ${i + 1}/${maxRetries} failed:`, error.message)
+        if (process.env.NODE_ENV === 'development') {
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+          console.log(`Server check attempt ${i + 1}/${maxRetries} failed:`, errorMessage)
+        }
         if (i === maxRetries - 1) {
           throw new Error(`Python server failed to start within timeout period (${maxRetries * retryDelay}ms)`)
         }
-        await new Promise(resolve => setTimeout(resolve, retryDelay))
+        // 使用递增延迟策略：前几次快速重试，后面逐步增加间隔
+        const dynamicDelay = i < 3 ? 1000 : (i < 6 ? 2000 : 3000)
+        await new Promise(resolve => setTimeout(resolve, dynamicDelay))
       }
     }
   }

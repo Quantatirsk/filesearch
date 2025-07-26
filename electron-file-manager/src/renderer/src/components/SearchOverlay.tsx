@@ -1,8 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { Search, Command, Loader2, FileIcon, FolderIcon } from 'lucide-react'
-import { Input } from './ui/input'
-import { Badge } from './ui/badge'
-import { cn } from '../lib/utils'
+import { Search, Loader2, X } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import { useAppStore } from '../stores/app-store'
 
@@ -30,6 +27,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
   const [isSearching, setIsSearching] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
+  const [isFocused, setIsFocused] = useState(false)
   
   const inputRef = useRef<HTMLInputElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -37,10 +35,8 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
   const { performImmediateSearch } = useSearch()
   const { isBackendRunning, searchResults, setSearchResults } = useAppStore()
   
-  // 检测暗色模式
-  const isDarkMode = document.documentElement.classList.contains('dark')
   
-  // 通知主进程渲染完成并聚焦输入框
+  // 启动时加载设置
   useEffect(() => {
     if (isVisible && inputRef.current) {
       // 通知主进程渲染完成，可以显示窗口了
@@ -91,42 +87,38 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isVisible, selectedMode, query, searchResults, activeIndex, isComposing, onClose])
 
-  // Close overlay when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (overlayRef.current && !overlayRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-
-    if (isVisible) {
-      document.addEventListener('mousedown', handleClickOutside)
-      return () => document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isVisible, onClose])
+  // Do not close overlay when clicking outside - only close on ESC key
 
   const executeSearch = useCallback(async () => {
     if (!query.trim() || !isBackendRunning) return
     
-    // For search window mode, always use onSearchAndOpenMain to ensure proper IPC handling
+    const searchQuery = query.trim()
+    const currentMode = selectedMode
+    
+    // For search window mode - hide immediately then execute
     if (onSearchAndOpenMain) {
-      console.log('Using onSearchAndOpenMain for mode:', selectedMode)
-      onSearchAndOpenMain(query.trim(), selectedMode)
+      console.log('Using onSearchAndOpenMain for mode:', currentMode)
+      // Hide search window immediately for better UX
+      onClose()
+      // Then execute the search
+      onSearchAndOpenMain(searchQuery, currentMode)
       return
     }
     
     // Fallback for normal overlay mode (not search window)
-    if (selectedMode === 'smart') {
-      onOpenChatAssistant?.(query.trim())
+    if (currentMode === 'smart') {
+      // Hide immediately for better UX
       onClose()
+      // Then open chat assistant
+      onOpenChatAssistant?.(searchQuery)
       return
     }
     
-    // For other search modes in normal overlay
+    // For other search modes in normal overlay - hide first then search
+    onClose()
     setIsSearching(true)
     try {
-      await performImmediateSearch(query.trim(), selectedMode)
-      onClose()
+      await performImmediateSearch(searchQuery, currentMode)
     } catch (error) {
       console.error('Search error:', error)
     } finally {
@@ -143,6 +135,13 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
     }
   }, [setSearchResults])
 
+  const clearSearch = useCallback(() => {
+    setQuery('')
+    setSearchResults([])
+    setActiveIndex(0)
+    inputRef.current?.focus()
+  }, [setSearchResults])
+
   const handleCompositionStart = useCallback(() => {
     setIsComposing(true)
   }, [])
@@ -151,45 +150,83 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
     setIsComposing(false)
   }, [])
 
-  const handleFileClick = useCallback((filePath: string) => {
-    window.electronAPI.files.openFile(filePath)
-    onClose()
-  }, [onClose])
 
   if (!isVisible) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent">
-      <div 
-        ref={overlayRef}
-        className="w-full max-w-lg mx-4"
-      >
-        {/* Spotlight风格搜索框 */}
-        <div className="rounded-3xl border bg-background shadow-lg">
-          <div className="flex items-center px-4 py-3">
-            <Search className="h-5 w-5 text-muted-foreground mr-3 flex-shrink-0" />
-            <Input
-              ref={inputRef}
-              placeholder={isBackendRunning ? "搜索文件..." : "请先启动后端服务..."}
-              value={query}
-              onChange={(e) => handleInputChange(e.target.value)}
-              onCompositionStart={handleCompositionStart}
-              onCompositionEnd={handleCompositionEnd}
-              className="flex-1 text-base bg-transparent border-none shadow-none focus-visible:ring-0 focus:outline-none focus:ring-0 focus:border-none placeholder:text-muted-foreground p-0 h-auto"
-              disabled={!isBackendRunning}
-            />
-            {isSearching ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-3" />
-            ) : (
-              <Badge 
-                variant="outline" 
-                className="ml-3 text-xs"
-              >
-                {searchModes.find(mode => mode.value === selectedMode)?.label}
-              </Badge>
-            )}
+    <div 
+      ref={overlayRef}
+      className={`flex items-center rounded-2xl w-full h-14 px-4 box-border transition-all duration-300 backdrop-blur-3xl ${
+        isFocused 
+          ? 'bg-white/90 dark:bg-white/10 border border-gray-400/80 dark:border-gray-300/60' 
+          : 'bg-white/70 dark:bg-white/5 border border-gray-200/40 dark:border-white/15'
+      }`}
+      style={{ 
+        margin: 0,
+        backdropFilter: 'blur(40px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(40px) saturate(180%)'
+      }}
+    >
+      <Search className="text-gray-500 dark:text-gray-300 flex-shrink-0" size={18} />
+      
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder={isBackendRunning ? "搜索内容..." : "请先启动后端服务..."}
+        value={query}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onCompositionStart={handleCompositionStart}
+        onCompositionEnd={handleCompositionEnd}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        disabled={!isBackendRunning}
+        className="flex-1 h-full px-3 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 text-sm font-medium"
+      />
+
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {query && (
+          <button 
+            onClick={clearSearch}
+            className="p-1.5 rounded-full hover:bg-white/20 dark:hover:bg-white/10 transition-colors"
+          >
+            <X size={16} className="text-gray-500 dark:text-gray-300" />
+          </button>
+        )}
+        
+        {isSearching && (
+          <div className="p-1.5">
+            <Loader2 className="text-gray-600 dark:text-gray-300 animate-spin" size={16} />
           </div>
-        </div>
+        )}
+        
+        {!isSearching && (
+          <div 
+            className={`px-3 py-2.5 rounded-xl backdrop-blur-3xl transition-all duration-300 ${
+              isFocused
+                ? 'bg-white/80 dark:bg-white/15 border border-gray-300/60 dark:border-gray-400/40'
+                : 'bg-white/60 dark:bg-white/8 border border-gray-200/30 dark:border-white/20'
+            }`}
+            style={{
+              backdropFilter: 'blur(40px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(40px) saturate(180%)'
+            }}
+          >
+            <div className="flex items-center gap-1.5 h-full">
+              {isBackendRunning && (
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                  tab
+                </span>
+              )}
+              <span className={`text-xs font-medium whitespace-nowrap transition-colors duration-300 ${
+                isFocused
+                  ? 'text-gray-900 dark:text-white'
+                  : 'text-gray-800 dark:text-gray-100'
+              }`}>
+                {searchModes.find(mode => mode.value === selectedMode)?.label}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

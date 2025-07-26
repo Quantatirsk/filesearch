@@ -36,8 +36,14 @@ import json
 import asyncio
 import time
 
-# Add project root to path
-project_root = Path(__file__).parent
+# Add project root to path - handle PyInstaller bundle
+if hasattr(sys, '_MEIPASS'):
+    # PyInstaller bundle environment
+    project_root = Path(sys._MEIPASS)
+else:
+    # Development environment
+    project_root = Path(__file__).parent
+
 sys.path.insert(0, str(project_root))
 
 from core.database import DocumentDatabase
@@ -163,9 +169,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global configuration
-DEFAULT_DB_PATH = "documents.db"
-UPLOAD_TEMP_DIR = "temp_uploads"
+# Global configuration - use absolute paths for PyInstaller compatibility
+if hasattr(sys, '_MEIPASS'):
+    # PyInstaller bundle environment - use user's home directory
+    import os
+    user_home = Path.home()
+    app_data_dir = user_home / ".filesearch"
+    app_data_dir.mkdir(exist_ok=True)
+    DEFAULT_DB_PATH = str(app_data_dir / "documents.db")
+    UPLOAD_TEMP_DIR = str(app_data_dir / "temp_uploads")
+else:
+    # Development environment - use current directory
+    DEFAULT_DB_PATH = "documents.db"
+    UPLOAD_TEMP_DIR = "temp_uploads"
 
 # Load environment variables
 load_dotenv()
@@ -181,7 +197,8 @@ try:
             api_key=openai_api_key,
             base_url=openai_base_url
         )
-        print(f"✅ OpenAI client initialized with base URL: {openai_base_url}")
+        if os.getenv('DEBUG'):
+            print(f"✅ OpenAI client initialized with base URL: {openai_base_url}")
     else:
         print("⚠️  OpenAI API key not found in environment variables")
 except Exception as e:
@@ -211,79 +228,167 @@ def is_port_in_use(port: int, host: str = "localhost") -> bool:
 
 
 def kill_process_on_port(port: int) -> bool:
-    """Kill process using the specified port"""
+    """
+    Kill process using the specified port with optimized hybrid strategy
+    
+    Strategy:
+    1. Unix systems: Use lsof for high performance
+    2. Fallback: Use psutil for cross-platform compatibility
+    3. Graceful termination followed by force kill if needed
+    """
+    import platform
+    
+    # Strategy 1: Use lsof on Unix systems (macOS/Linux) - high performance
+    if platform.system() in ['Darwin', 'Linux']:
+        print(f"🔍 Using lsof to find processes on port {port}")
+        if _kill_with_lsof(port):
+            return True
+        print("⚠️  lsof method failed, falling back to psutil")
+    
+    # Strategy 2: Fallback to psutil (Windows compatible + lsof failure)
+    print(f"🔍 Using psutil to find processes on port {port}")
+    return _kill_with_psutil(port)
+
+
+def _kill_with_lsof(port: int) -> bool:
+    """High-performance lsof-based process killing"""
     try:
+        import subprocess
+        import time
+        
+        # Find processes using the port
+        result = subprocess.run(
+            ['lsof', '-ti', f':{port}'], 
+            capture_output=True, 
+            text=True, 
+            timeout=5
+        )
+        
+        if not result.stdout.strip():
+            print(f"✅ No process found using port {port}")
+            return True
+            
+        pids = [pid.strip() for pid in result.stdout.strip().split('\n') if pid.strip()]
+        
+        if not pids:
+            return True
+            
+        print(f"🎯 Found {len(pids)} process(es) using port {port}: {pids}")
+        
+        # Graceful termination strategy
+        for pid in pids:
+            try:
+                # Step 1: Send SIGTERM for graceful shutdown
+                subprocess.run(['kill', '-TERM', pid], timeout=3, check=True)
+                print(f"📤 Sent SIGTERM to process {pid}")
+                
+                # Step 2: Wait 3 seconds for graceful shutdown
+                time.sleep(3)
+                
+                # Step 3: Check if process still exists
+                check_result = subprocess.run(
+                    ['kill', '-0', pid], 
+                    capture_output=True, 
+                    timeout=2
+                )
+                
+                if check_result.returncode == 0:
+                    # Process still exists, force kill
+                    subprocess.run(['kill', '-9', pid], timeout=3, check=True)
+                    print(f"💥 Force killed process {pid}")
+                else:
+                    print(f"✅ Process {pid} terminated gracefully")
+                    
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 1:  # Process already dead
+                    print(f"✅ Process {pid} already terminated")
+                else:
+                    print(f"⚠️  Failed to kill process {pid}: {e}")
+                    continue
+            except subprocess.TimeoutExpired:
+                print(f"⏰ Timeout killing process {pid}")
+                continue
+                
+        return True
+        
+    except subprocess.TimeoutExpired:
+        print("⏰ lsof command timed out")
+        return False
+    except FileNotFoundError:
+        print("❌ lsof command not found")
+        return False
+    except Exception as e:
+        print(f"❌ lsof method failed: {e}")
+        return False
+
+
+def _kill_with_psutil(port: int) -> bool:
+    """Cross-platform psutil-based process killing (optimized)"""
+    try:
+        killed_any = False
+        
         for proc in psutil.process_iter(['pid', 'name']):
             try:
+                # Skip obvious system processes for performance
+                if proc.info['name'] in ['kernel_task', 'launchd', 'systemd', 'kthreadd']:
+                    continue
+                    
                 # Get network connections for this process
                 connections = proc.net_connections()
                 for conn in connections:
                     if hasattr(conn, 'laddr') and conn.laddr and conn.laddr.port == port:
-                        print(f"🔄 Found process {proc.info['pid']} ({proc.info['name']}) using port {port}")
-                        proc.terminate()
+                        print(f"🎯 Found process {proc.info['pid']} ({proc.info['name']}) using port {port}")
+                        
+                        # Graceful termination -> force kill strategy
                         try:
-                            proc.wait(timeout=5)
-                            print(f"✅ Successfully terminated process {proc.info['pid']}")
+                            proc.terminate()  # SIGTERM
+                            proc.wait(timeout=5)  # Wait up to 5 seconds
+                            print(f"✅ Process {proc.info['pid']} terminated gracefully")
                         except psutil.TimeoutExpired:
-                            # Force kill if terminate doesn't work
-                            proc.kill()
+                            proc.kill()  # SIGKILL
                             print(f"💥 Force killed process {proc.info['pid']}")
-                        return True
+                        
+                        killed_any = True
+                        
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
             except Exception:
                 # Skip processes we can't access
                 continue
+                
+        return killed_any
+        
     except Exception as e:
-        print(f"❌ Error killing process on port {port}: {e}")
+        print(f"❌ psutil method failed: {e}")
         return False
-    return False
 
 
 def cleanup_port(port: int, host: str = "localhost") -> None:
-    """Clean up port before starting server"""
+    """Clean up port before starting server with optimized strategy"""
     # Check both IPv4 and IPv6
     ipv4_in_use = is_port_in_use(port, host)
     ipv6_in_use = is_port_in_use(port, "::1") if host in ["localhost", "127.0.0.1"] else False
     
-    if ipv4_in_use or ipv6_in_use:
-        print(f"🚨 Port {port} is already in use, attempting to free it...")
-        killed = kill_process_on_port(port)
-        if killed:
-            print(f"✅ Port {port} has been freed")
-            # Wait a moment for the port to be fully released
-            import time
-            time.sleep(2)
-            
-            # Verify port is actually free
-            if is_port_in_use(port, host):
-                print(f"⚠️  Port {port} still appears to be in use after cleanup")
-            else:
+    if not (ipv4_in_use or ipv6_in_use):
+        if os.getenv('DEBUG'):
+            print(f"✅ Port {port} is available")
+        return
+    
+    print(f"🚨 Port {port} is in use, cleaning up...")
+    
+    # Use optimized kill function (includes both lsof and psutil strategies)
+    if kill_process_on_port(port):
+        # Wait for port to be fully released
+        import time
+        for _ in range(5):  # Check up to 5 times with 1s intervals
+            time.sleep(1)
+            if not is_port_in_use(port, host):
                 print(f"🎉 Port {port} is now available")
-        else:
-            print(f"⚠️  Could not free port {port}, trying alternative method...")
-            # Alternative: Use lsof to find and kill process
-            try:
-                import subprocess
-                result = subprocess.run(['lsof', '-ti', f':{port}'], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.stdout.strip():
-                    pids = result.stdout.strip().split('\n')
-                    for pid in pids:
-                        try:
-                            subprocess.run(['kill', '-9', pid], timeout=5)
-                            print(f"💥 Force killed process {pid} using lsof")
-                        except Exception:
-                            pass
-                    import time
-                    time.sleep(1)
-            except Exception:
-                pass
-            
-            if is_port_in_use(port, host):
-                print(f"❌ Port {port} is still in use - server startup may fail")
+                return
+        
+        print(f"⚠️  Port {port} still appears busy after cleanup")
     else:
-        print(f"✅ Port {port} is available")
+        print(f"❌ Failed to clean up port {port} - server startup may fail")
 
 
 @app.get("/", response_model=Dict[str, str])
@@ -311,7 +416,7 @@ async def health_check():
     try:
         # Test database connection
         with get_database() as db:
-            stats = db.get_stats()
+            db.get_stats()  # Test database connectivity
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
@@ -415,17 +520,32 @@ async def index_directory(
     """
     try:
         directory_path = Path(request.directory)
+        print(f"[DEBUG] Indexing directory: {directory_path}")
+        print(f"[DEBUG] Database path: {db_path}")
+        print(f"[DEBUG] Current working directory: {Path.cwd()}")
+        print(f"[DEBUG] Directory exists: {directory_path.exists()}")
+        print(f"[DEBUG] Directory is dir: {directory_path.is_dir()}")
+        
         if not directory_path.exists():
             raise HTTPException(status_code=404, detail="Directory not found")
         
         if not directory_path.is_dir():
             raise HTTPException(status_code=400, detail="Path is not a directory")
         
+        # Check database directory permissions
+        db_path_obj = Path(db_path)
+        db_dir = db_path_obj.parent
+        print(f"[DEBUG] Database directory: {db_dir}")
+        print(f"[DEBUG] Database directory exists: {db_dir.exists()}")
+        print(f"[DEBUG] Database directory writable: {os.access(db_dir, os.W_OK)}")
+        
         indexer = DocumentIndexer(db_path, max_workers=request.workers)
         stats = indexer.index_directory(
             str(directory_path),
             force_reindex=request.force
         )
+        
+        print(f"[DEBUG] Indexing stats: {stats}")
         
         return IndexResponse(
             success=True,
@@ -897,20 +1017,22 @@ if __name__ == "__main__":
     DEFAULT_DB_PATH = args.db
     
     print(f"🚀 Starting Document Search API Server...")
-    print(f"📊 Database: {DEFAULT_DB_PATH}")
-    print(f"🌐 Server: http://{args.host}:{args.port}")
-    print(f"📚 API Docs: http://{args.host}:{args.port}/docs")
-    print(f"📖 ReDoc: http://{args.host}:{args.port}/redoc")
+    if args.host != 'localhost' or args.port != 8001 or os.getenv('DEBUG'):
+        print(f"📊 Database: {DEFAULT_DB_PATH}")
+        print(f"🌐 Server: http://{args.host}:{args.port}")
+        print(f"📚 API Docs: http://{args.host}:{args.port}/docs")
+        print(f"📖 ReDoc: http://{args.host}:{args.port}/redoc")
     
     # Clean up port before starting
     cleanup_port(args.port, args.host)
     
     try:
+        # Use direct app reference instead of module string for PyInstaller compatibility
         uvicorn.run(
-            "api_server:app",
+            app,
             host=args.host,
             port=args.port,
-            reload=args.reload
+            reload=False  # Disable reload in packaged environment
         )
     except KeyboardInterrupt:
         print("\n🛑 Server stopped by user")

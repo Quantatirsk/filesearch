@@ -9,9 +9,11 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "build:win": "electron-vite build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:python": "cd .. && python build_backend.py",
+    "build:full": "npm run build:python && electron-vite build",
+    "build:win": "npm run build:full && electron-builder --win",
+    "build:mac": "npm run build:full && electron-builder --mac",
+    "build:linux": "npm run build:full && electron-builder --linux",
     "preview": "electron-vite preview",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit"
@@ -62,7 +64,7 @@
     "@typescript-eslint/parser": "^6.2.1",
     "@vitejs/plugin-react": "^4.0.4",
     "autoprefixer": "^10.4.16",
-    "electron": "^25.6.0",
+    "electron": "^25.9.8",
     "electron-builder": "^24.6.3",
     "electron-vite": "^1.0.27",
     "eslint": "^8.46.0",
@@ -81,7 +83,19 @@
     "directories": {
       "output": "dist"
     },
-    "files": ["out/**/*", "resources/**/*"],
+    "files": [
+      "out/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/python/",
+        "to": "python/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity"
     },

@@ -81,14 +81,60 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   
   // References
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   // Track search progress for current search
   const searchProgressCollectedRef = useRef(false)
 
-  // Auto-scroll to bottom
+  // Enhanced auto-scroll to bottom with multiple strategies
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Strategy 1: Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      try {
+        // Strategy 2: Try scrollIntoView on target element
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ 
+            behavior: 'smooth',
+            block: 'end'
+          })
+        }
+        
+        // Strategy 3: If ScrollArea ref is available, scroll its viewport
+        if (scrollAreaRef.current) {
+          const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]')
+          if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight
+          }
+        }
+        
+        // Strategy 4: Direct scroll on messages container
+        const messagesContainer = document.querySelector('.w-full.px-6.py-4.space-y-4')
+        if (messagesContainer && messagesContainer.parentElement) {
+          const scrollParent = messagesContainer.parentElement
+          scrollParent.scrollTop = scrollParent.scrollHeight
+        }
+        
+        // Strategy 5: Fallback with longer delay - find any scroll container and scroll to bottom
+        setTimeout(() => {
+          const scrollContainers = document.querySelectorAll('[data-radix-scroll-area-viewport]')
+          scrollContainers.forEach(container => {
+            if (container.contains(messagesEndRef.current)) {
+              container.scrollTop = container.scrollHeight
+            }
+          })
+          
+          // Final fallback: scroll main dialog content if needed
+          const dialogContent = document.querySelector('[role="dialog"] .flex.flex-col')
+          if (dialogContent) {
+            dialogContent.scrollTop = dialogContent.scrollHeight
+          }
+        }, 200)
+        
+      } catch (error) {
+        console.warn('Scroll to bottom failed:', error)
+      }
+    })
   }, [])
 
   useEffect(() => {
@@ -113,7 +159,14 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
   // Auto-submit initial query when provided
   useEffect(() => {
-    if (!isOpen || !initialQuery || !initialQuery.trim() || isStreaming || messages.length > 0) {
+    if (!isOpen || !initialQuery || !initialQuery.trim() || isStreaming) {
+      return
+    }
+    
+    // Check for duplicate query - prevent same query from being executed consecutively
+    const lastUserMessage = messages.filter(m => m.role === 'user').pop()
+    if (lastUserMessage && lastUserMessage.content.trim() === initialQuery.trim()) {
+      console.log('Duplicate query detected, skipping:', initialQuery.trim())
       return
     }
     
@@ -580,7 +633,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         </DialogHeader>
 
         {/* Messages Area - Full Width */}
-        <ScrollArea className="flex-1">
+        <ScrollArea ref={scrollAreaRef} className="flex-1">
               <div className="w-full px-6 py-4 space-y-4">
                 {messages.length === 0 && !currentStreamingMessage && !currentSearchingMessageId && (
                   <div className="text-center py-12">

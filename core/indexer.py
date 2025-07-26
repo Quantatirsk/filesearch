@@ -159,6 +159,7 @@ class DocumentIndexer:
         # Create queues for communication
         task_queue = mp.Queue()
         result_queue = mp.Queue()
+        stats_queue = mp.Queue()  # For receiving stats from database writer
         
         # Fill task queue
         for file_path in file_paths:
@@ -181,7 +182,7 @@ class DocumentIndexer:
         # Start database writer process
         db_writer = mp.Process(
             target=self._database_writer_process,
-            args=(result_queue, len(file_paths))
+            args=(result_queue, len(file_paths), stats_queue)
         )
         db_writer.start()
         
@@ -192,6 +193,15 @@ class DocumentIndexer:
         # Signal database writer to stop
         result_queue.put(None)
         db_writer.join()
+        
+        # Get stats from database writer
+        try:
+            writer_stats = stats_queue.get(timeout=1)
+            self.stats['processed_files'] = writer_stats['processed_files']
+            self.stats['failed_files'] = writer_stats['failed_files']
+            self.stats['errors'].extend(writer_stats['errors'])
+        except:
+            pass  # Use default values if stats not available
     
     def _worker_process(self, task_queue: mp.Queue, result_queue: mp.Queue, worker_id: int):
         """
@@ -286,15 +296,19 @@ class DocumentIndexer:
                 'error': str(e)
             }
     
-    def _database_writer_process(self, result_queue: mp.Queue, expected_results: int):
+    def _database_writer_process(self, result_queue: mp.Queue, expected_results: int, stats_queue: mp.Queue):
         """
         Dedicated database writer process.
         
         Args:
             result_queue: Queue containing parsing results
             expected_results: Number of expected results
+            stats_queue: Queue for sending stats back to main process
         """
         processed_count = 0
+        successful_files = 0
+        failed_files = 0
+        errors = []
         batch_size = 10
         batch_buffer = []
         
@@ -321,15 +335,15 @@ class DocumentIndexer:
                         # Process batch when buffer is full
                         if len(batch_buffer) >= batch_size:
                             success_count = db.add_documents_batch(batch_buffer)
-                            self.stats['processed_files'] += success_count
-                            self.stats['failed_files'] += len(batch_buffer) - success_count
+                            successful_files += success_count
+                            failed_files += len(batch_buffer) - success_count
                             batch_buffer = []
                     else:
                         # Log error
                         error_msg = f"Failed to process {result['file_path']}: {result['error']}"
                         print(error_msg)
-                        self.stats['errors'].append(error_msg)
-                        self.stats['failed_files'] += 1
+                        errors.append(error_msg)
+                        failed_files += 1
                     
                     # Print progress
                     if processed_count % 50 == 0:
@@ -344,10 +358,17 @@ class DocumentIndexer:
             # Process remaining batch
             if batch_buffer:
                 success_count = db.add_documents_batch(batch_buffer)
-                self.stats['processed_files'] += success_count
-                self.stats['failed_files'] += len(batch_buffer) - success_count
+                successful_files += success_count
+                failed_files += len(batch_buffer) - success_count
         
-        print(f"Database writer completed. Processed {processed_count} results")
+        # Send stats back to main process
+        stats_queue.put({
+            'processed_files': successful_files,
+            'failed_files': failed_files,
+            'errors': errors
+        })
+        
+        print(f"Database writer completed. Processed {processed_count} results, successful: {successful_files}, failed: {failed_files}")
     
     def _get_final_stats(self) -> Dict[str, Any]:
         """
@@ -361,8 +382,10 @@ class DocumentIndexer:
         return {
             'total_files': self.stats['total_files'],
             'processed_files': self.stats['processed_files'],
+            'indexed_files': self.stats['processed_files'],  # API compatibility
             'failed_files': self.stats['failed_files'],
             'duration_seconds': duration,
+            'processing_time': duration,  # API compatibility
             'files_per_second': self.stats['processed_files'] / duration if duration > 0 else 0,
             'errors': self.stats['errors']
         }

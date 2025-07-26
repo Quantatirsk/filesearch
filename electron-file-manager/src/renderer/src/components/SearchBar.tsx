@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { Search, Filter, Loader2 } from 'lucide-react'
+import { Search, Loader2 } from 'lucide-react'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
@@ -36,17 +36,11 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
       console.log('Setting initial query:', initialQuery)
       isSettingExternalValue.current = true
       setInputValue(initialQuery)
-      // 确保输入框获得焦点并选中文本
+      // 设置查询值但不聚焦或选中文本，让用户专注于搜索结果
       setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus()
-          inputRef.current.select()
-        }
-        // 设置完成后重置标志
-        setTimeout(() => {
-          isSettingExternalValue.current = false
-        }, 100)
-      }, 50)
+        // 不自动聚焦，让用户专注于搜索结果而不是输入框
+        isSettingExternalValue.current = false
+      }, 100)
     }
     if (initialSearchType !== undefined) {
       console.log('Setting initial search type:', initialSearchType)
@@ -54,15 +48,15 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
     }
   }, [initialQuery, initialSearchType])
   
-  // 确保输入框在搜索后保持焦点，但不要在外部设置值时干扰
-  useEffect(() => {
-    if (!localSearching && inputRef.current && !isSettingExternalValue.current) {
-      // 只有在没有设置外部值时才重新聚焦
-      setTimeout(() => {
-        inputRef.current?.focus()
-      }, 0)
-    }
-  }, [localSearching])
+  // 移除自动聚焦逻辑 - 让用户在搜索完成后专注于结果而不是输入框
+  // useEffect(() => {
+  //   if (!localSearching && inputRef.current && !isSettingExternalValue.current) {
+  //     // 只有在没有设置外部值时才重新聚焦
+  //     setTimeout(() => {
+  //       inputRef.current?.focus()
+  //     }, 0)
+  //   }
+  // }, [localSearching])
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value)
@@ -91,6 +85,9 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
       // 执行搜索，搜索关键词会在 useSearch 中设置
       performImmediateSearch(inputValue.trim(), searchType)
       onSearch?.(inputValue.trim(), searchType)
+      
+      // 执行搜索后让输入框失焦
+      inputRef.current?.blur()
     }
   }, [inputValue, searchType, isBackendRunning, performImmediateSearch, onSearch, onOpenChatAssistant])
 
