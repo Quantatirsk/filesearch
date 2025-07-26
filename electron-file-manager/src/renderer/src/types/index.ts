@@ -4,7 +4,10 @@ export interface FileItem {
   file_name: string
   file_size: number
   file_type: string
-  last_modified: string
+  file_created?: number        // 文件创建时间戳
+  file_modified?: number       // 文件实际修改时间戳
+  last_modified: string        // 格式化的修改时间字符串（向后兼容）
+  last_indexed?: number        // 索引时间戳
   content_preview?: string
   match_score?: number
   highlighted_content?: string
@@ -42,6 +45,7 @@ export interface IndexOptions {
   directory: string
   force: boolean
   workers?: number
+  include_all_files?: boolean
 }
 
 export interface IndexResult {

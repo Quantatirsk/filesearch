@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 ### Core CLI Commands
 ```bash
-# Index documents (primary workflow)
+# Index documents (primary workflow) - NO FILE SIZE LIMITS
 python main.py index /path/to/documents --workers 8 --force
 
 # Search operations

@@ -46,6 +46,6 @@ ParserFactory.register_parser(DOCParser)
 
 if __name__ == "__main__":
     # Example usage
-    doc_file_path = "/Users/quant/Documents/filesearch/example/demo.doc"
+    doc_file_path = "/Users/quant/Documents/filesearch/example/1-1上市公司可交换债业务推荐书.doc"
     optimized_text = extract_text(doc_file_path, optimize_format=True)
     print(optimized_text)

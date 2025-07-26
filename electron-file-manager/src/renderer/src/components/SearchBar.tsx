@@ -22,7 +22,7 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
   const [localSearching, setLocalSearching] = useState(false)
   // 追踪中文输入法的组合状态
   const [isComposing, setIsComposing] = useState(false)
-  const { performSearch, performImmediateSearch } = useSearch()
+  const { performImmediateSearch } = useSearch()
   const isBackendRunning = useAppStore(state => state.isBackendRunning)
   
   // 保持输入框焦点的引用

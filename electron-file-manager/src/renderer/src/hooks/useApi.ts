@@ -77,6 +77,71 @@ export const useApi = () => {
     }) as IndexResult
   }, [makeRequest])
 
+  const indexDirectoryWithProgress = useCallback(async (
+    options: IndexOptions,
+    onProgress: (progress: {
+      status: string
+      processed_files: number
+      total_files: number
+      current_file: string
+      errors: string[]
+    }) => void
+  ): Promise<IndexResult> => {
+    // Start indexing and get session ID
+    const startResponse = await makeRequest({
+      method: 'POST',
+      url: '/index/stream',
+      data: options
+    }) as { session_id: string; message: string; progress_url: string }
+
+    // Connect to SSE endpoint for progress updates
+    const eventSource = new EventSource(
+      `http://localhost:8001/index/progress/${startResponse.session_id}`
+    )
+
+    return new Promise((resolve, reject) => {
+      let finalResult: IndexResult | null = null
+
+      eventSource.addEventListener('progress', (event) => {
+        const progress = JSON.parse(event.data)
+        onProgress(progress)
+      })
+
+      eventSource.addEventListener('complete', (event) => {
+        const data = JSON.parse(event.data)
+        eventSource.close()
+        
+        // Create final result based on last progress update
+        if (data.status === 'completed') {
+          resolve({
+            success: true,
+            indexed_files: finalResult?.indexed_files || 0,
+            total_files: finalResult?.total_files || 0,
+            processing_time: 0,
+          })
+        } else {
+          reject(new Error('Indexing failed'))
+        }
+      })
+
+      eventSource.addEventListener('error', (event) => {
+        eventSource.close()
+        reject(new Error('Connection error'))
+      })
+
+      // Store the latest progress as final result
+      eventSource.addEventListener('progress', (event) => {
+        const progress = JSON.parse(event.data)
+        finalResult = {
+          success: progress.status === 'completed',
+          indexed_files: progress.processed_files,
+          total_files: progress.total_files,
+          processing_time: 0
+        }
+      })
+    })
+  }, [makeRequest])
+
   const getStats = useCallback(async (): Promise<DatabaseStats> => {
     return await makeRequest({
       method: 'GET',
@@ -576,6 +641,7 @@ export const useApi = () => {
     search,
     advancedSearch,
     indexDirectory,
+    indexDirectoryWithProgress,
     getStats,
     getSupportedFormats,
     clearIndex,

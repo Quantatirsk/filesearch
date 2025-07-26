@@ -43,10 +43,35 @@ class DocumentDatabase:
                 file_path TEXT UNIQUE NOT NULL,
                 file_hash TEXT NOT NULL,
                 file_size INTEGER NOT NULL,
+                file_created INTEGER NOT NULL,
+                file_modified INTEGER NOT NULL,
                 last_indexed INTEGER NOT NULL,
                 file_type TEXT NOT NULL
             )
         """)
+        
+        # Check if file_modified column exists, if not add it (for existing databases)
+        cursor.execute("PRAGMA table_info(docs_meta)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'file_modified' not in columns:
+            print("Adding file_modified column to existing database...")
+            cursor.execute("ALTER TABLE docs_meta ADD COLUMN file_modified INTEGER DEFAULT 0")
+            # Update existing records with file modification time from filesystem
+            cursor.execute("SELECT file_path FROM docs_meta WHERE file_modified = 0")
+            files_to_update = cursor.fetchall()
+            for row in files_to_update:
+                file_path = row[0]
+                try:
+                    file_stat = Path(file_path).stat()
+                    file_modified = int(file_stat.st_mtime)
+                    cursor.execute("UPDATE docs_meta SET file_modified = ? WHERE file_path = ?", 
+                                 (file_modified, file_path))
+                except Exception as e:
+                    print(f"Could not update modification time for {file_path}: {e}")
+                    # Use last_indexed as fallback
+                    cursor.execute("UPDATE docs_meta SET file_modified = last_indexed WHERE file_path = ?", 
+                                 (file_path,))
+            print(f"Updated {len(files_to_update)} existing records with file modification times")
         
         # Create FTS5 virtual table for full-text search
         # Using porter tokenizer for better text processing
@@ -114,7 +139,7 @@ class DocumentDatabase:
         current_hash = self.calculate_file_hash(file_path)
         return current_hash == result['file_hash']
     
-    def add_document(self, file_path: str, content: str, file_type: str) -> bool:
+    def add_document(self, file_path: str, content: str, file_type: str, file_created: Optional[int] = None) -> bool:
         """
         Add or update a document in the database.
         
@@ -122,6 +147,7 @@ class DocumentDatabase:
             file_path: Path to the document
             content: Extracted text content
             file_type: File extension (e.g., 'pdf', 'docx')
+            file_created: File creation timestamp (optional, will be detected if not provided)
             
         Returns:
             True if successful, False otherwise
@@ -131,25 +157,41 @@ class DocumentDatabase:
             if not file_hash:
                 return False
             
-            file_size = Path(file_path).stat().st_size
-            timestamp = int(time.time())
+            file_stat = Path(file_path).stat()
+            file_size = file_stat.st_size
+            file_modified = int(file_stat.st_mtime)  # File's actual modification time
+            timestamp = int(time.time())  # Indexing time
+            
+            # Get file creation time if not provided
+            if file_created is None:
+                # Use creation time on Windows, birth time on macOS, or fallback to modification time
+                try:
+                    file_created = int(getattr(file_stat, 'st_birthtime', file_stat.st_ctime))
+                except (AttributeError, OSError):
+                    file_created = int(file_stat.st_mtime)
             
             cursor = self.conn.cursor()
             
             # Insert or replace document metadata
             cursor.execute("""
                 INSERT OR REPLACE INTO docs_meta 
-                (file_path, file_hash, file_size, last_indexed, file_type)
-                VALUES (?, ?, ?, ?, ?)
-            """, (file_path, file_hash, file_size, timestamp, file_type))
+                (file_path, file_hash, file_size, file_created, file_modified, last_indexed, file_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (file_path, file_hash, file_size, file_created, file_modified, timestamp, file_type))
             
             doc_id = cursor.lastrowid
             
-            # Insert or replace FTS content
-            cursor.execute("""
-                INSERT OR REPLACE INTO docs_fts (doc_id, content)
-                VALUES (?, ?)
-            """, (doc_id, content))
+            # Insert or replace FTS content (only if content is not empty)
+            if content:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO docs_fts (doc_id, content)
+                    VALUES (?, ?)
+                """, (doc_id, content))
+            else:
+                # For files with no content, remove from FTS table if exists
+                cursor.execute("""
+                    DELETE FROM docs_fts WHERE doc_id = ?
+                """, (doc_id,))
             
             self.conn.commit()
             return True
@@ -159,12 +201,12 @@ class DocumentDatabase:
             self.conn.rollback()
             return False
     
-    def add_documents_batch(self, documents: List[Tuple[str, str, str]]) -> int:
+    def add_documents_batch(self, documents: List[Tuple[str, str, str, Optional[int]]]) -> int:
         """
         Add multiple documents in a single transaction for better performance.
         
         Args:
-            documents: List of (file_path, content, file_type) tuples
+            documents: List of (file_path, content, file_type, file_created) tuples
             
         Returns:
             Number of successfully added documents
@@ -179,29 +221,50 @@ class DocumentDatabase:
             # Begin transaction
             cursor.execute("BEGIN TRANSACTION")
             
-            for file_path, content, file_type in documents:
+            for doc_data in documents:
+                if len(doc_data) == 3:
+                    file_path, content, file_type = doc_data
+                    file_created = None
+                else:
+                    file_path, content, file_type, file_created = doc_data
+                
                 try:
                     file_hash = self.calculate_file_hash(file_path)
                     if not file_hash:
                         continue
                     
-                    file_size = Path(file_path).stat().st_size
-                    timestamp = int(time.time())
+                    file_stat = Path(file_path).stat()
+                    file_size = file_stat.st_size
+                    file_modified = int(file_stat.st_mtime)  # File's actual modification time
+                    timestamp = int(time.time())  # Indexing time
+                    
+                    # Get file creation time if not provided
+                    if file_created is None:
+                        try:
+                            file_created = int(getattr(file_stat, 'st_birthtime', file_stat.st_ctime))
+                        except (AttributeError, OSError):
+                            file_created = int(file_stat.st_mtime)
                     
                     # Insert metadata
                     cursor.execute("""
                         INSERT OR REPLACE INTO docs_meta 
-                        (file_path, file_hash, file_size, last_indexed, file_type)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (file_path, file_hash, file_size, timestamp, file_type))
+                        (file_path, file_hash, file_size, file_created, file_modified, last_indexed, file_type)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (file_path, file_hash, file_size, file_created, file_modified, timestamp, file_type))
                     
                     doc_id = cursor.lastrowid
                     
-                    # Insert FTS content
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO docs_fts (doc_id, content)
-                        VALUES (?, ?)
-                    """, (doc_id, content))
+                    # Insert FTS content (only if content is not empty)
+                    if content:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO docs_fts (doc_id, content)
+                            VALUES (?, ?)
+                        """, (doc_id, content))
+                    else:
+                        # For files with no content, remove from FTS table if exists
+                        cursor.execute("""
+                            DELETE FROM docs_fts WHERE doc_id = ?
+                        """, (doc_id,))
                     
                     success_count += 1
                     
@@ -262,6 +325,8 @@ class DocumentDatabase:
                 m.file_path,
                 m.file_type,
                 m.file_size,
+                m.file_created,
+                m.file_modified,
                 m.last_indexed,
                 m.file_hash
             FROM docs_fts
@@ -277,7 +342,10 @@ class DocumentDatabase:
                 'file_path': row['file_path'],
                 'file_type': row['file_type'],
                 'file_size': row['file_size'],
-                'last_modified': row['last_indexed'],  # 兼容性
+                'file_created': row['file_created'],
+                'file_modified': row['file_modified'],  # 文件实际修改时间
+                'last_modified': row['file_modified'],  # API兼容性
+                'last_indexed': row['last_indexed'],   # 索引时间
                 'file_hash': row['file_hash']
             })
         
@@ -317,6 +385,8 @@ class DocumentDatabase:
                     m.file_path,
                     m.file_type,
                     m.file_size,
+                    m.file_created,
+                    m.file_modified,
                     m.last_indexed,
                     m.file_hash
                 FROM docs_fts
@@ -332,7 +402,10 @@ class DocumentDatabase:
                     'file_path': row['file_path'],
                     'file_type': row['file_type'],
                     'file_size': row['file_size'],
-                    'last_modified': row['last_indexed'],  # 兼容性
+                    'file_created': row['file_created'],
+                    'file_modified': row['file_modified'],  # 文件实际修改时间
+                    'last_modified': row['file_modified'],  # API兼容性
+                    'last_indexed': row['last_indexed'],   # 索引时间
                     'file_hash': row['file_hash']
                 })
             
@@ -383,7 +456,7 @@ class DocumentDatabase:
         params.append(limit)
         
         cursor.execute(f"""
-            SELECT file_path, file_type, file_size, last_indexed
+            SELECT file_path, file_type, file_size, file_created, file_modified, last_indexed
             FROM docs_meta
             WHERE {where_clause}
             ORDER BY file_path
@@ -396,8 +469,219 @@ class DocumentDatabase:
                 'file_path': row['file_path'],
                 'file_type': row['file_type'],
                 'file_size': row['file_size'],
-                'last_indexed': row['last_indexed']
+                'file_created': row['file_created'],
+                'file_modified': row['file_modified'],  # 文件实际修改时间
+                'last_modified': row['file_modified'],  # API兼容性
+                'last_indexed': row['last_indexed']    # 索引时间
             })
+        
+        return results
+    
+    def search_by_metadata(self, 
+                          min_size: Optional[int] = None, 
+                          max_size: Optional[int] = None,
+                          created_after: Optional[int] = None, 
+                          created_before: Optional[int] = None,
+                          modified_after: Optional[int] = None, 
+                          modified_before: Optional[int] = None,
+                          file_types: Optional[List[str]] = None,
+                          limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Search documents by metadata criteria.
+        
+        Args:
+            min_size: Minimum file size in bytes
+            max_size: Maximum file size in bytes
+            created_after: Created after timestamp
+            created_before: Created before timestamp
+            modified_after: Modified after timestamp
+            modified_before: Modified before timestamp
+            file_types: List of file extensions to filter by
+            limit: Maximum number of results
+            
+        Returns:
+            List of matching documents
+        """
+        cursor = self.conn.cursor()
+        
+        where_conditions = []
+        params = []
+        
+        # File size filters
+        if min_size is not None:
+            where_conditions.append("file_size >= ?")
+            params.append(min_size)
+        
+        if max_size is not None:
+            where_conditions.append("file_size <= ?")
+            params.append(max_size)
+        
+        # Creation time filters
+        if created_after is not None:
+            where_conditions.append("file_created >= ?")
+            params.append(created_after)
+        
+        if created_before is not None:
+            where_conditions.append("file_created <= ?")
+            params.append(created_before)
+        
+        # Modification time filters
+        if modified_after is not None:
+            where_conditions.append("last_indexed >= ?")
+            params.append(modified_after)
+        
+        if modified_before is not None:
+            where_conditions.append("last_indexed <= ?")
+            params.append(modified_before)
+        
+        # File type filters
+        if file_types:
+            normalized_types = [ft.lstrip('.') for ft in file_types]
+            placeholders = ','.join(['?' for _ in normalized_types])
+            where_conditions.append(f"file_type IN ({placeholders})")
+            params.extend(normalized_types)
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        params.append(limit)
+        
+        cursor.execute(f"""
+            SELECT file_path, file_type, file_size, file_created, file_modified, last_indexed
+            FROM docs_meta
+            WHERE {where_clause}
+            ORDER BY file_created DESC
+            LIMIT ?
+        """, params)
+        
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'file_path': row['file_path'],
+                'file_type': row['file_type'],
+                'file_size': row['file_size'],
+                'file_created': row['file_created'],
+                'file_modified': row['file_modified'],  # 文件实际修改时间
+                'last_modified': row['file_modified'],  # API兼容性
+                'last_indexed': row['last_indexed']    # 索引时间
+            })
+        
+        return results
+    
+    def search_combined(self, 
+                       content_query: Optional[str] = None,
+                       path_query: Optional[str] = None,
+                       min_size: Optional[int] = None,
+                       max_size: Optional[int] = None,
+                       created_after: Optional[int] = None,
+                       created_before: Optional[int] = None,
+                       file_types: Optional[List[str]] = None,
+                       limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Combined search supporting content, path, and metadata filters.
+        
+        Args:
+            content_query: Text content search query
+            path_query: File path search query
+            min_size: Minimum file size in bytes
+            max_size: Maximum file size in bytes
+            created_after: Created after timestamp
+            created_before: Created before timestamp
+            file_types: List of file extensions to filter by
+            limit: Maximum number of results
+            
+        Returns:
+            List of matching documents
+        """
+        cursor = self.conn.cursor()
+        
+        where_conditions = []
+        params = []
+        join_fts = False
+        
+        # Content search (requires FTS join)
+        if content_query and content_query.strip():
+            keywords = [k.strip() for k in content_query.split() if k.strip()]
+            if keywords:
+                join_fts = True
+                for keyword in keywords:
+                    where_conditions.append("docs_fts.content LIKE ?")
+                    params.append(f'%{keyword}%')
+        
+        # Path search
+        if path_query and path_query.strip():
+            path_keywords = [k.strip() for k in path_query.split() if k.strip()]
+            for keyword in path_keywords:
+                where_conditions.append("m.file_path LIKE ?")
+                params.append(f'%{keyword}%')
+        
+        # File size filters
+        if min_size is not None:
+            where_conditions.append("m.file_size >= ?")
+            params.append(min_size)
+        
+        if max_size is not None:
+            where_conditions.append("m.file_size <= ?")
+            params.append(max_size)
+        
+        # Creation time filters
+        if created_after is not None:
+            where_conditions.append("m.file_created >= ?")
+            params.append(created_after)
+        
+        if created_before is not None:
+            where_conditions.append("m.file_created <= ?")
+            params.append(created_before)
+        
+        # File type filters
+        if file_types:
+            normalized_types = [ft.lstrip('.') for ft in file_types]
+            placeholders = ','.join(['?' for _ in normalized_types])
+            where_conditions.append(f"m.file_type IN ({placeholders})")
+            params.extend(normalized_types)
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        params.append(limit)
+        
+        if join_fts:
+            # Query with FTS join for content search
+            cursor.execute(f"""
+                SELECT 
+                    m.file_path,
+                    m.file_type,
+                    m.file_size,
+                    m.file_created,
+                    m.file_modified,
+                    m.last_indexed,
+                    m.file_hash
+                FROM docs_fts
+                JOIN docs_meta m ON docs_fts.doc_id = m.doc_id
+                WHERE {where_clause}
+                ORDER BY m.file_created DESC
+                LIMIT ?
+            """, params)
+        else:
+            # Query only metadata table
+            cursor.execute(f"""
+                SELECT file_path, file_type, file_size, file_created, file_modified, last_indexed
+                FROM docs_meta m
+                WHERE {where_clause}
+                ORDER BY file_created DESC
+                LIMIT ?
+            """, params)
+        
+        results = []
+        for row in cursor.fetchall():
+            result = {
+                'file_path': row['file_path'],
+                'file_type': row['file_type'],
+                'file_size': row['file_size'],
+                'file_created': row['file_created'],
+                'file_modified': row['file_modified'],  # 文件实际修改时间
+                'last_modified': row['file_modified'],  # API兼容性
+                'last_indexed': row['last_indexed']    # 索引时间
+            }
+            if join_fts and 'file_hash' in row.keys():
+                result['file_hash'] = row['file_hash']
+            results.append(result)
         
         return results
     
@@ -431,7 +715,7 @@ class DocumentDatabase:
         """
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT file_path, file_type, file_size, last_indexed
+            SELECT file_path, file_type, file_size, file_created, file_modified, last_indexed
             FROM docs_meta
             ORDER BY last_indexed DESC
         """)
@@ -442,7 +726,10 @@ class DocumentDatabase:
                 'file_path': row['file_path'],
                 'file_type': row['file_type'],
                 'file_size': row['file_size'],
-                'last_indexed': row['last_indexed']
+                'file_created': row['file_created'],
+                'file_modified': row['file_modified'],  # 文件实际修改时间
+                'last_modified': row['file_modified'],  # API兼容性
+                'last_indexed': row['last_indexed']    # 索引时间
             })
         
         return results

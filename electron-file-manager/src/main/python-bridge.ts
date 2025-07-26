@@ -1,8 +1,13 @@
 import { spawn, ChildProcess } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import axios, { AxiosRequestConfig } from 'axios'
+import { promisify } from 'util'
+import { exec } from 'child_process'
+import os from 'os'
+
+const execAsync = promisify(exec)
 
 // 全局单例标记，防止多个窗口同时启动
 let globalPythonStarting = false
@@ -50,7 +55,7 @@ export class PythonBridge {
     this.isStarted = false
 
     try {
-      const { command, args, cwd } = this.getPythonCommand()
+      const { command, args, cwd } = await this.getPythonCommand()
       
       console.log('🔍 Starting Python backend...')
       if (process.env.NODE_ENV === 'development') {
@@ -136,7 +141,7 @@ export class PythonBridge {
     return this.isStarted && this.pythonProcess !== null
   }
 
-  async makeApiRequest(options: AxiosRequestConfig): Promise<any> {
+  async makeApiRequest(options: AxiosRequestConfig): Promise<unknown> {
     if (!this.isStarted) {
       throw new Error('Python backend not running')
     }
@@ -159,13 +164,13 @@ export class PythonBridge {
       }
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`Making API request to ${options.url} with timeout: ${timeout}ms (${timeout/1000}s)`)
+        console.log(`Making API request to ${options.url} with timeout: ${timeout}ms (${timeout / 1000}s)`)
       }
       
       const response = await axios({
         ...options,
         baseURL: this.baseUrl,
-        timeout: timeout
+        timeout
       })
       return response.data
     } catch (error) {
@@ -174,7 +179,7 @@ export class PythonBridge {
     }
   }
 
-  private getPythonCommand(): { command: string; args: string[]; cwd: string } {
+  private async getPythonCommand(): Promise<{ command: string; args: string[]; cwd: string }> {
     // 优先使用打包的可执行文件
     const isDevelopment = !app.isPackaged
     const appPath = app.getAppPath()
@@ -200,21 +205,24 @@ export class PythonBridge {
       }
     }
     
-    // 开发环境或回退方案：使用系统 Python
+    // 开发环境：自动管理 conda 环境 'file'
     const pythonBackendPath = isDevelopment 
       ? join(__dirname, '../../..') 
       : join(process.resourcesPath, '../../../..')
     
-    console.log('🔍 Using system Python from:', pythonBackendPath)
+    console.log('🔍 Managing conda environment "file"...')
+    
+    // 确保 conda 环境 'file' 存在并配置正确
+    const pythonCommand = await this.ensureCondaEnvironment()
     
     return {
-      command: '/Users/quant/miniforge3/bin/python',
+      command: pythonCommand,
       args: ['api_server.py', '--host', this.host, '--port', this.port.toString()],
       cwd: pythonBackendPath
     }
   }
 
-  private async waitForServer(maxRetries = 15, retryDelay = 2000): Promise<void> {
+  private async waitForServer(maxRetries = 15): Promise<void> {
     console.log('Waiting for Python server to start...')
     for (let i = 0; i < maxRetries; i++) {
       try {
@@ -227,7 +235,7 @@ export class PythonBridge {
           console.log(`Server check attempt ${i + 1}/${maxRetries} failed:`, errorMessage)
         }
         if (i === maxRetries - 1) {
-          throw new Error(`Python server failed to start within timeout period (${maxRetries * retryDelay}ms)`)
+          throw new Error(`Python server failed to start within timeout period`)
         }
         // 使用递增延迟策略：前几次快速重试，后面逐步增加间隔
         const dynamicDelay = i < 3 ? 1000 : (i < 6 ? 2000 : 3000)
@@ -235,4 +243,158 @@ export class PythonBridge {
       }
     }
   }
+
+  private async ensureCondaEnvironment(): Promise<string> {
+    const envName = 'file'
+    const homeDir = os.homedir()
+    
+    // 查找 conda 安装路径
+    const condaPaths = [
+      join(homeDir, 'miniforge3'),
+      join(homeDir, 'anaconda3'), 
+      join(homeDir, 'miniconda3'),
+      join(homeDir, 'mambaforge')
+    ]
+    
+    let condaPath = ''
+    let condaCommand = ''
+    
+    // 找到第一个存在的 conda 安装
+    for (const path of condaPaths) {
+      if (existsSync(join(path, 'bin', 'conda'))) {
+        condaPath = path
+        condaCommand = join(path, 'bin', 'conda')
+        break
+      }
+    }
+    
+    if (!condaPath) {
+      throw new Error('❌ No conda installation found. Please install miniforge, anaconda, or miniconda.')
+    }
+    
+    console.log('✅ Found conda installation:', condaPath)
+    
+    // 检查环境是否存在
+    const envPath = join(condaPath, 'envs', envName)
+    const pythonPath = join(envPath, 'bin', 'python')
+    
+    if (!existsSync(envPath)) {
+      console.log(`🔧 Creating conda environment "${envName}"...`)
+      await this.createCondaEnvironment(condaCommand, envName)
+    } else {
+      console.log(`✅ Conda environment "${envName}" exists`)
+    }
+    
+    // 验证 Python 可执行文件
+    if (!existsSync(pythonPath)) {
+      throw new Error(`❌ Python not found in conda environment: ${pythonPath}`)
+    }
+    
+    // 检查并安装依赖
+    await this.ensureDependencies(pythonPath)
+    
+    return pythonPath
+  }
+  
+  private async createCondaEnvironment(condaCommand: string, envName: string): Promise<void> {
+    try {
+      console.log(`🔧 Creating conda environment "${envName}" with Python 3.11...`)
+      await execAsync(`${condaCommand} create -n ${envName} python=3.11 -y`, { timeout: 300000 }) // 5 minutes
+      console.log(`✅ Conda environment "${envName}" created successfully`)
+    } catch (error) {
+      throw new Error(`❌ Failed to create conda environment: ${error}`)
+    }
+  }
+  
+  private async ensureDependencies(pythonPath: string): Promise<void> {
+    console.log('🔍 Checking Python dependencies...')
+    
+    // 找到 requirements.txt 路径
+    const isDevelopment = !app.isPackaged
+    const projectRoot = isDevelopment ? join(__dirname, '../../..') : join(process.resourcesPath, '../../../..')
+    const requirementsPath = join(projectRoot, 'requirements.txt')
+    
+    if (!existsSync(requirementsPath)) {
+      console.log('⚠️ requirements.txt not found, skipping dependency check')
+      return
+    }
+    
+    // 从 requirements.txt 读取包列表
+    const requiredPackages = this.parseRequirementsFile(requirementsPath)
+    console.log(`📋 Found ${requiredPackages.length} packages in requirements.txt`)
+    
+    // 检查是否已安装所有依赖
+    const missingPackages: string[] = []
+    
+    for (const pkg of requiredPackages) {
+      try {
+        // 将包名转换为可导入的模块名
+        const importName = this.getImportName(pkg.name)
+        await execAsync(`${pythonPath} -c "import ${importName}"`, { timeout: 5000 })
+      } catch {
+        missingPackages.push(pkg.name)
+      }
+    }
+    
+    if (missingPackages.length > 0) {
+      console.log(`🔧 Installing missing packages: ${missingPackages.join(', ')}`)
+      console.log('📦 Installing from requirements.txt...')
+      await execAsync(`${pythonPath} -m pip install -r "${requirementsPath}"`, { timeout: 600000 }) // 10 minutes
+      console.log('✅ All dependencies installed from requirements.txt')
+    } else {
+      console.log('✅ All dependencies are already installed')
+    }
+  }
+  
+  private parseRequirementsFile(requirementsPath: string): Array<{ name: string; version?: string }> {
+    try {
+      const content = readFileSync(requirementsPath, 'utf8')
+      const lines = content.split('\n')
+      const packages: Array<{ name: string; version?: string }> = []
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim()
+        
+        // 跳过空行和注释
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+          continue
+        }
+        
+        // 解析包名和版本
+        // 支持格式：package, package==1.0.0, package>=1.0.0, package[extra]>=1.0.0
+        const match = trimmedLine.match(/^([a-zA-Z0-9_\-\.]+(?:\[[^\]]+\])?)\s*([><=!~]*\s*[\d.]+.*)?/)
+        if (match) {
+          const fullName = match[1] // 保留完整包名（包括 extras）
+          const baseName = fullName.split('[')[0] // 基础包名（移除 extras）
+          const version = match[2]?.trim()
+          packages.push({ name: baseName, version })
+        }
+      }
+      
+      return packages
+    } catch (error) {
+      console.log('⚠️ Error parsing requirements.txt:', error)
+      return []
+    }
+  }
+  
+  private getImportName(packageName: string): string {
+    // 某些包的导入名与包名不同
+    const importMapping: { [key: string]: string } = {
+      'pymupdf': 'fitz',
+      'PyMuPDF': 'fitz',
+      'python-multipart': 'multipart',
+      'sse-starlette': 'sse_starlette',
+      'python-dotenv': 'dotenv',
+      'python-calamine': 'python_calamine',
+      'uvicorn[standard]': 'uvicorn',
+      'uvicorn': 'uvicorn'
+    }
+    
+    // 标准化包名（转小写并移除版本和extras）
+    const normalizedName = packageName.toLowerCase().split('[')[0]
+    
+    return importMapping[packageName] || importMapping[normalizedName] || normalizedName.replace('-', '_')
+  }
+
 }

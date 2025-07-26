@@ -21,6 +21,7 @@ interface SettingsData {
   // 文件类型过滤
   enabledCategories: string[]
   enabledFormats: string[]
+  totalSupportedFormatsCount?: number // Track total count for "all formats" detection
   
   // 后端设置
   serverPort: number

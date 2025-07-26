@@ -1,36 +1,37 @@
 # Core dependencies following technical report recommendations
 
 # High-performance PDF parsing (C-based MuPDF binding)
-PyMuPDF>=1.23.0
+PyMuPDF
 
 # High-performance XLSX parsing (Rust-based Calamine binding)
-python-calamine>=0.2.0
+python-calamine
 
 # Fast XML parsing for DOCX (C-based libxml2 binding)
-lxml>=4.9.0
+lxml
 
 # Legacy Excel file support
-xlrd>=2.0.0
+xlrd
 
 # CSV and data processing (C-optimized pandas)
-pandas>=1.5.0
+pandas
 
 # High-performance fuzzy string matching (C++ implementation)
-rapidfuzz>=3.0.0
+rapidfuzz
 
 # DOC file parsing (doc2txt library)
 doc2txt
 
 # System monitoring (kept for general use)
-psutil>=5.9.0
+psutil
 
 # FastAPI REST API service
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-python-multipart>=0.0.6
+fastapi
+uvicorn[standard]
+python-multipart
+sse-starlette
 
 # LLM integration
-openai>=1.97.0
-python-dotenv>=1.1.1
+openai
+python-dotenv
 
 jieba

@@ -58,6 +58,57 @@ class FileUtils:
             print(f"Error discovering files in {root_dir}: {e}")
     
     @staticmethod
+    def discover_all_files(root_dir: str, max_file_size: int = None) -> Generator[Path, None, None]:
+        """
+        Discover all files in a directory tree regardless of type.
+        
+        Args:
+            root_dir: Root directory to search in
+            max_file_size: Maximum file size in bytes (None = no limit, removed size restriction)
+            
+        Yields:
+            Path objects for all files found
+        """
+        root_path = Path(root_dir)
+        
+        if not root_path.exists():
+            print(f"Directory does not exist: {root_dir}")
+            return
+        
+        if not root_path.is_dir():
+            print(f"Path is not a directory: {root_dir}")
+            return
+        
+        try:
+            # Use rglob for recursive search (faster than os.walk)
+            for file_path in root_path.rglob('*'):
+                if file_path.is_file():
+                    try:
+                        # Optional file size check (disabled by default)
+                        if max_file_size is not None and file_path.stat().st_size > max_file_size:
+                            print(f"Skipping large file: {file_path} ({file_path.stat().st_size / 1024 / 1024:.1f}MB)")
+                            continue
+                        
+                        # Skip system/hidden files and directories
+                        if any(part.startswith('.') for part in file_path.parts):
+                            continue
+                        
+                        # Skip common system/temp directories
+                        skip_dirs = {'.git', '.svn', '.hg', 'node_modules', '__pycache__', '.pytest_cache', 
+                                   'venv', '.venv', 'env', '.env', 'build', 'dist', '.DS_Store', 'Thumbs.db'}
+                        if any(skip_dir in file_path.parts for skip_dir in skip_dirs):
+                            continue
+                        
+                        yield file_path
+                    except (OSError, PermissionError) as e:
+                        print(f"Cannot access file {file_path}: {e}")
+                        continue
+        except PermissionError as e:
+            print(f"Permission denied accessing {root_dir}: {e}")
+        except Exception as e:
+            print(f"Error discovering files in {root_dir}: {e}")
+    
+    @staticmethod
     def get_file_info(file_path: Path) -> Dict[str, Any]:
         """
         Get comprehensive file information.
@@ -85,6 +136,49 @@ class FileUtils:
                 'size': 0,
                 'modified': 0,
                 'extension': file_path.suffix.lower(),
+                'exists': False,
+                'error': str(e)
+            }
+    
+    @staticmethod
+    def get_file_metadata(file_path: str) -> Dict[str, Any]:
+        """
+        Get complete file metadata including creation time.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            Dictionary with complete file metadata
+        """
+        try:
+            path_obj = Path(file_path)
+            stat = path_obj.stat()
+            
+            # Get file creation time (platform-specific)
+            try:
+                # macOS: st_birthtime, Windows: st_ctime, Linux: fallback to st_mtime
+                created_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+            except (AttributeError, OSError):
+                created_time = stat.st_mtime
+            
+            return {
+                'path': str(path_obj),
+                'name': path_obj.name,
+                'size': stat.st_size,
+                'created': int(created_time),
+                'modified': int(stat.st_mtime),
+                'extension': path_obj.suffix.lower(),
+                'exists': True
+            }
+        except Exception as e:
+            return {
+                'path': file_path,
+                'name': Path(file_path).name,
+                'size': 0,
+                'created': 0,
+                'modified': 0,
+                'extension': Path(file_path).suffix.lower(),
                 'exists': False,
                 'error': str(e)
             }

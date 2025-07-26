@@ -91,12 +91,35 @@ const DEFAULT_SETTINGS: SettingsData = {
   
   enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
   enabledFormats: [
-    // Default formats for common document types
-    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md',
+    // Document formats
+    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.rtf',
     // Programming files
-    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css',
+    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css', '.java', '.cpp', '.c', '.h',
+    '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.dart', '.scala', '.sh', '.bat', '.ps1',
     // Config files
-    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf'
+    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf', '.config', '.cfg', '.properties',
+    // Media files (images)
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico', '.tiff', '.tif', '.raw',
+    // Media files (audio)
+    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.ape',
+    // Media files (video)
+    '.mp4', '.avi', '.mov', '.wmv', '.mkv', '.webm', '.flv', '.m4v', '.3gp',
+    // Subtitle files
+    '.srt', '.vtt', '.ass', '.ssa', '.sub', '.sbv', '.lrc',
+    // Archive files
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.dmg', '.iso',
+    // Development files
+    '.makefile', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig',
+    // Office files
+    '.ppt', '.pptx', '.odt', '.ods', '.odp',
+    // E-book formats
+    '.epub', '.mobi', '.azw', '.azw3', '.fb2',
+    // Font files
+    '.ttf', '.otf', '.woff', '.woff2', '.eot',
+    // Database files
+    '.db', '.sqlite', '.sqlite3', '.mdb',
+    // Other common files
+    '.log', '.tmp', '.bak', '.old', '.orig', '.backup'
   ],
   
   serverPort: 8001,
@@ -154,6 +177,15 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         const formats = await getSupportedFormats()
         setFormatsData(formats)
         
+        // Update the totalSupportedFormatsCount in settings for better "all formats" detection
+        if (formats.success) {
+          const updatedSettings = {
+            ...localSettings,
+            totalSupportedFormatsCount: formats.total_count
+          }
+          setLocalSettings(updatedSettings)
+        }
+        
         // 只在用户首次使用且没有保存过任何设置时，才从API设置默认格式
         // 注意：永远不要覆盖用户已经保存的选择，即使是空数组
         if (settings.enabledFormats.length === 0 && formats.success) {
@@ -167,7 +199,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           ].map(format => format.startsWith('.') ? format : `.${format}`) // 确保格式有点前缀
           const updatedSettings = {
             ...localSettings,
-            enabledFormats: defaultFormats
+            enabledFormats: defaultFormats,
+            totalSupportedFormatsCount: formats.total_count
           }
           console.log('📋 Setting default formats:', defaultFormats)
           setLocalSettings(updatedSettings)
@@ -262,6 +295,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     updateSetting('enabledCategories', [])
   }
 
+  // Check if all formats are selected (for "other all formats" logic)
+  const isAllFormatsSelected = () => {
+    if (!formatsData) return false
+    const allFormats = formatsData.supported_formats.map(f => f.startsWith('.') ? f : `.${f}`)
+    return localSettings.enabledFormats.length === allFormats.length &&
+           allFormats.every(format => localSettings.enabledFormats.includes(format))
+  }
+
   // 清空索引函数
   const handleClearIndex = useCallback(async () => {
     if (!isBackendRunning) {
@@ -319,16 +360,15 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <SettingsIcon className="h-5 w-5" />
-            应用设置
+      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col overflow-hidden">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle>
+            设置
           </DialogTitle>
         </DialogHeader>
         
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs defaultValue="overview" className="flex-1 flex flex-col">
+          <TabsList className="flex-shrink-0 grid w-full grid-cols-6 mb-4">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <PieChart className="h-4 w-4" />
               概览
@@ -354,6 +394,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               高级
             </TabsTrigger>
           </TabsList>
+          
+          <div className="flex-1 overflow-y-auto">
 
           {/* 概览页签 */}
           <TabsContent value="overview" className="space-y-4">
@@ -646,9 +688,16 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     全不选
                   </Button>
                   {formatsData && (
-                    <Badge variant="secondary" className="ml-auto">
-                      已启用: {localSettings.enabledFormats.length} / {formatsData.total_count}
-                    </Badge>
+                    <div className="ml-auto flex gap-2">
+                      {isAllFormatsSelected() && (
+                        <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                          其他所有格式
+                        </Badge>
+                      )}
+                      <Badge variant="secondary">
+                        已启用: {localSettings.enabledFormats.length} / {formatsData.total_count}
+                      </Badge>
+                    </div>
                   )}
                 </div>
               </CardHeader>
@@ -802,8 +851,12 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       value={localSettings.maxFileSize}
                       onChange={(e) => updateSetting('maxFileSize', Number(e.target.value))}
                       min="1"
-                      max="1000"
+                      max="10000"
+                      disabled
                     />
+                    <div className="text-xs text-muted-foreground">
+                      ⚠️ 文件大小限制已禁用，所有文件都将被索引
+                    </div>
                   </div>
                 </div>
 
@@ -817,9 +870,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               </CardContent>
             </Card>
           </TabsContent>
+          </div>
         </Tabs>
 
-        <div className="flex justify-between pt-4">
+        <div className="flex-shrink-0 flex justify-between pt-4 border-t">
           <Button variant="outline" onClick={handleReset}>
             重置为默认值
           </Button>

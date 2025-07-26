@@ -479,13 +479,22 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       </div>
       
       {/* 大小列 */}
-      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20">
+      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20 text-center">
         {formatFileSize(file.file_size)}
       </div>
       
+      {/* 创建时间列 */}
+      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20 text-center">
+        <span className="truncate" title={file.file_created ? formatDate(new Date(file.file_created < 1e12 ? file.file_created * 1000 : file.file_created)) : '-'}>
+          {file.file_created ? formatDate(new Date(file.file_created < 1e12 ? file.file_created * 1000 : file.file_created)) : '-'}
+        </span>
+      </div>
+      
       {/* 修改时间列 */}
-      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20">
-        {formatDate(file.last_modified)}
+      <div className="text-xs text-muted-foreground px-1 py-0.5 flex items-center justify-center border-r border-border/20 text-center">
+        <span className="truncate" title={formatDate(file.last_modified)}>
+          {formatDate(file.last_modified)}
+        </span>
       </div>
       
       {/* 匹配度列 */}
@@ -626,7 +635,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           className="w-full border-b border-border/30 grid"
           style={{ 
             height: '36px',
-            gridTemplateColumns: '32px 1fr 80px 96px 128px 80px 160px', // 精确的列宽定义
+            gridTemplateColumns: '40px 1fr 60px 80px 120px 120px 60px 140px', // 固定合理列宽设计
             paddingRight: `${scrollbarWidth}px` // 动态为滚动条预留空间
           }}
         >
@@ -657,6 +666,11 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           {/* 大小列表头 */}
           <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
             大小
+          </div>
+          
+          {/* 创建时间列表头 */}
+          <div className="px-1 py-0.5 flex items-center justify-center font-medium text-sm text-muted-foreground border-r border-border/20">
+            创建时间
           </div>
           
           {/* 修改时间列表头 */}
@@ -704,7 +718,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                   height: `${ROW_HEIGHT}px`, // 强制使用当前的 ROW_HEIGHT
                   transform: `translateY(${virtualItem.start}px)`,
                   display: 'grid',
-                  gridTemplateColumns: '32px 1fr 80px 96px 128px 80px 160px', // 与表头完全相同的列宽
+                  gridTemplateColumns: '40px 1fr 60px 80px 120px 120px 60px 140px', // 与表头完全相同的列宽 - 固定合理列宽
                   borderBottom: '1px solid hsl(var(--border))',
                 }}
                 className={cn(

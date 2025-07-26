@@ -35,6 +35,9 @@ from dotenv import load_dotenv
 import json
 import asyncio
 import time
+from sse_starlette.sse import EventSourceResponse
+import threading
+from collections import defaultdict
 
 # Add project root to path - handle PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
@@ -77,10 +80,31 @@ class AdvancedSearchRequest(BaseModel):
     fuzzy: bool = Field(False, description="Use fuzzy matching for content")
     limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
 
+class MetadataSearchRequest(BaseModel):
+    min_size: Optional[int] = Field(None, description="Minimum file size in bytes")
+    max_size: Optional[int] = Field(None, description="Maximum file size in bytes")
+    created_after: Optional[int] = Field(None, description="Created after timestamp")
+    created_before: Optional[int] = Field(None, description="Created before timestamp")
+    modified_after: Optional[int] = Field(None, description="Modified after timestamp")
+    modified_before: Optional[int] = Field(None, description="Modified before timestamp")
+    file_types: Optional[List[str]] = Field(None, description="File types to include")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+
+class CombinedSearchRequest(BaseModel):
+    content_query: Optional[str] = Field(None, description="Content search query")
+    path_query: Optional[str] = Field(None, description="Path search query")
+    min_size: Optional[int] = Field(None, description="Minimum file size in bytes")
+    max_size: Optional[int] = Field(None, description="Maximum file size in bytes")
+    created_after: Optional[int] = Field(None, description="Created after timestamp")
+    created_before: Optional[int] = Field(None, description="Created before timestamp")
+    file_types: Optional[List[str]] = Field(None, description="File types to include")
+    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+
 class IndexRequest(BaseModel):
     directory: str = Field(..., description="Directory path to index")
     force: bool = Field(False, description="Force reindexing of all files")
     workers: Optional[int] = Field(None, description="Number of worker processes")
+    include_all_files: bool = Field(False, description="Include all file types (not just text files)")
 
 class IndexResponse(BaseModel):
     success: bool
@@ -159,6 +183,23 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# Global storage for indexing progress tracking
+indexing_progress = defaultdict(lambda: {
+    "status": "idle",
+    "processed_files": 0,
+    "total_files": 0,
+    "current_file": "",
+    "errors": [],
+    "start_time": 0,
+    "elapsed_time": 0,
+    "speed": 0,
+    "eta": 0
+})
+
+# Global current indexing session
+current_indexing_session = None
+progress_lock = threading.Lock()
 
 # Add CORS middleware for web frontend support
 app.add_middleware(
@@ -475,6 +516,93 @@ async def advanced_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/search/metadata", response_model=SearchResponse)
+async def metadata_search(
+    request: MetadataSearchRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Search documents by metadata criteria (size, dates, file types)
+    """
+    try:
+        start_time = time.time()
+        
+        with get_database(db_path) as db:
+            results = db.search_by_metadata(
+                min_size=request.min_size,
+                max_size=request.max_size,
+                created_after=request.created_after,
+                created_before=request.created_before,
+                modified_after=request.modified_after,
+                modified_before=request.modified_before,
+                file_types=request.file_types,
+                limit=request.limit
+            )
+        
+        search_time = time.time() - start_time
+        
+        return SearchResponse(
+            success=True,
+            query="metadata_search",
+            search_type="metadata",
+            results=results,
+            total_results=len(results),
+            search_time=search_time,
+            limit=request.limit
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/search/combined", response_model=SearchResponse)
+async def combined_search(
+    request: CombinedSearchRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Combined search supporting content, path, and metadata filters
+    """
+    try:
+        start_time = time.time()
+        
+        with get_database(db_path) as db:
+            results = db.search_combined(
+                content_query=request.content_query,
+                path_query=request.path_query,
+                min_size=request.min_size,
+                max_size=request.max_size,
+                created_after=request.created_after,
+                created_before=request.created_before,
+                file_types=request.file_types,
+                limit=request.limit
+            )
+        
+        search_time = time.time() - start_time
+        
+        # Determine search type based on what filters were used
+        search_type = "combined"
+        if request.content_query:
+            search_type += "_content"
+        if request.path_query:
+            search_type += "_path"
+        if any([request.min_size, request.max_size, request.created_after, request.created_before]):
+            search_type += "_metadata"
+        
+        return SearchResponse(
+            success=True,
+            query=f"content:{request.content_query or ''} path:{request.path_query or ''}",
+            search_type=search_type,
+            results=results,
+            total_results=len(results),
+            search_time=search_time,
+            limit=request.limit
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/file/content", response_model=FileContentResponse)
 async def get_file_content(
     request: FileContentRequest,
@@ -542,7 +670,8 @@ async def index_directory(
         indexer = DocumentIndexer(db_path, max_workers=request.workers)
         stats = indexer.index_directory(
             str(directory_path),
-            force_reindex=request.force
+            force_reindex=request.force,
+            include_all_files=request.include_all_files
         )
         
         print(f"[DEBUG] Indexing stats: {stats}")
@@ -556,6 +685,190 @@ async def index_directory(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/indexing/progress")
+async def get_indexing_progress():
+    """
+    Get current indexing progress for polling
+    """
+    global current_indexing_session
+    
+    with progress_lock:
+        # Check if there's a current indexing session
+        if not current_indexing_session or current_indexing_session not in indexing_progress:
+            return {
+                "status": "idle",
+                "processed": 0,
+                "total": 0,
+                "current_file": "",
+                "speed": 0,
+                "elapsed_time": 0,
+                "eta": 0
+            }
+        
+        # Get the current session progress
+        progress = dict(indexing_progress[current_indexing_session])
+        
+        # Calculate timing information
+        elapsed_time = progress.get("elapsed_time", 0)
+        speed = progress.get("speed", 0)
+        eta = progress.get("eta", 0)
+        
+        return {
+            "status": progress["status"],
+            "processed": progress["processed_files"],
+            "total": progress["total_files"],
+            "current_file": progress["current_file"],
+            "speed": speed,
+            "elapsed_time": elapsed_time,
+            "eta": eta
+        }
+
+
+@app.get("/index/progress/{session_id}")
+async def get_index_progress(session_id: str):
+    """
+    Stream real-time indexing progress updates using Server-Sent Events
+    """
+    async def event_generator():
+        while True:
+            with progress_lock:
+                progress = dict(indexing_progress[session_id])
+            
+            # Send progress update
+            yield {
+                "event": "progress",
+                "data": json.dumps({
+                    "status": progress["status"],
+                    "processed_files": progress["processed_files"],
+                    "total_files": progress["total_files"],
+                    "current_file": progress["current_file"],
+                    "errors": progress["errors"][-5:]  # Last 5 errors
+                })
+            }
+            
+            # Check if indexing is complete
+            if progress["status"] in ["completed", "failed"]:
+                yield {
+                    "event": "complete",
+                    "data": json.dumps({"status": progress["status"]})
+                }
+                break
+            
+            # Wait before next update
+            await asyncio.sleep(0.5)
+    
+    return EventSourceResponse(event_generator())
+
+
+@app.post("/index/stream")
+async def index_directory_stream(
+    request: IndexRequest,
+    db_path: str = Query(DEFAULT_DB_PATH, description="Database file path")
+):
+    """
+    Index documents in a directory with real-time progress streaming
+    """
+    import uuid
+    session_id = str(uuid.uuid4())
+    
+    # Initialize progress for this session
+    global current_indexing_session
+    start_time = time.time()
+    with progress_lock:
+        current_indexing_session = session_id
+        indexing_progress[session_id] = {
+            "status": "starting",
+            "processed_files": 0,
+            "total_files": 0,
+            "current_file": "",
+            "errors": [],
+            "start_time": start_time,
+            "elapsed_time": 0,
+            "speed": 0,
+            "eta": 0
+        }
+    
+    # Start indexing in background thread
+    def run_indexing():
+        try:
+            directory_path = Path(request.directory)
+            
+            if not directory_path.exists():
+                with progress_lock:
+                    indexing_progress[session_id]["status"] = "failed"
+                    indexing_progress[session_id]["errors"].append("Directory not found")
+                return
+            
+            if not directory_path.is_dir():
+                with progress_lock:
+                    indexing_progress[session_id]["status"] = "failed"
+                    indexing_progress[session_id]["errors"].append("Path is not a directory")
+                return
+            
+            # Create custom indexer with progress callback
+            def progress_callback(stats):
+                with progress_lock:
+                    current_time = time.time()
+                    elapsed_time = current_time - start_time
+                    processed = stats.get("processed_files", 0)
+                    total = stats.get("total_files", 0)
+                    
+                    # Calculate speed (files per second)
+                    speed = processed / elapsed_time if elapsed_time > 0 else 0
+                    
+                    # Calculate ETA (estimated time to completion)
+                    remaining = total - processed
+                    eta = remaining / speed if speed > 0 and remaining > 0 else 0
+                    
+                    indexing_progress[session_id].update({
+                        "status": "indexing",
+                        "processed_files": processed,
+                        "total_files": total,
+                        "current_file": stats.get("current_file", ""),
+                        "elapsed_time": elapsed_time,
+                        "speed": speed,
+                        "eta": eta
+                    })
+            
+            indexer = DocumentIndexer(db_path, max_workers=request.workers)
+            
+            # Use the indexer with progress callback
+            stats = indexer.index_directory(
+                str(directory_path),
+                force_reindex=request.force,
+                include_all_files=request.include_all_files,
+                progress_callback=progress_callback
+            )
+            
+            with progress_lock:
+                final_time = time.time()
+                final_elapsed = final_time - start_time
+                indexing_progress[session_id].update({
+                    "status": "completed",
+                    "processed_files": stats.get('indexed_files', 0),
+                    "total_files": stats.get('total_files', 0),
+                    "elapsed_time": final_elapsed,
+                    "speed": stats.get('indexed_files', 0) / final_elapsed if final_elapsed > 0 else 0,
+                    "eta": 0
+                })
+                # Keep current session for a bit so UI can show completion
+                # It will be cleared after timeout or new session starts
+        
+        except Exception as e:
+            with progress_lock:
+                indexing_progress[session_id]["status"] = "failed"
+                indexing_progress[session_id]["errors"].append(str(e))
+    
+    # Start indexing in background
+    threading.Thread(target=run_indexing, daemon=True).start()
+    
+    return JSONResponse({
+        "session_id": session_id,
+        "message": "Indexing started",
+        "progress_url": f"/index/progress/{session_id}"
+    })
 
 
 @app.post("/upload")

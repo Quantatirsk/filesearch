@@ -36,14 +36,31 @@ export const useSearch = () => {
       const keywords = parseMultiKeywords(query)
       const searchQuery = keywords.join(' ')
       
-      const fileTypesToSend = settings.enabledFormats && settings.enabledFormats.length > 0 ? settings.enabledFormats : undefined
+      // Check if all formats are selected - if so, don't send format filter to query everything
+      let fileTypesToSend: string[] | undefined = undefined
+      
+      if (settings.enabledFormats && settings.enabledFormats.length > 0) {
+        // Check if all formats are selected by comparing with total supported formats count
+        const totalFormats = settings.totalSupportedFormatsCount || 250 // Fallback estimate
+        const isAllFormatsSelected = settings.enabledFormats.length >= totalFormats
+        
+        if (isAllFormatsSelected) {
+          // Don't send format filter when all formats are selected - this allows querying all file types
+          fileTypesToSend = undefined
+        } else {
+          // Send specific format filter for partial selection
+          fileTypesToSend = settings.enabledFormats
+        }
+      }
       
       // Debug logging
       console.log('🔍 Search Debug Info:')
       console.log('  - Query:', searchQuery)
       console.log('  - Type:', type)
-      console.log('  - Settings enabled formats:', settings.enabledFormats)
-      console.log('  - File types to send:', fileTypesToSend)
+      console.log('  - Enabled formats count:', settings.enabledFormats?.length || 0)
+      console.log('  - Total supported formats:', settings.totalSupportedFormatsCount || 'unknown')
+      console.log('  - Is all formats selected:', settings.enabledFormats && settings.enabledFormats.length >= (settings.totalSupportedFormatsCount || 250))
+      console.log('  - File types to send:', fileTypesToSend ? `${fileTypesToSend.length} specific formats` : 'undefined (search all formats)')
       
       // 快速搜索：并行执行精确搜索和路径搜索，然后合并去重结果
       if (type === 'quick') {
@@ -107,19 +124,17 @@ export const useSearch = () => {
           // 转换后端数据格式为前端FileItem格式
           const convertedResults = result.results.map((item: any) => {
             
-            // 处理时间戳
+            // 处理修改时间戳 - 优先使用file_modified，fallback到last_modified
             let lastModified = new Date().toISOString()
-            if (item.last_modified) {
-              // 如果是数字时间戳，需要检查是秒还是毫秒
-              if (typeof item.last_modified === 'number') {
+            const modifiedTimestamp = item.file_modified || item.last_modified
+            if (modifiedTimestamp) {
+              if (typeof modifiedTimestamp === 'number') {
                 // 如果时间戳小于 1e12，说明是秒级时间戳，需要转换为毫秒
-                const timestamp = item.last_modified < 1e12 ? item.last_modified * 1000 : item.last_modified
+                const timestamp = modifiedTimestamp < 1e12 ? modifiedTimestamp * 1000 : modifiedTimestamp
                 lastModified = new Date(timestamp).toISOString()
-              } else if (typeof item.last_modified === 'string') {
-                lastModified = item.last_modified
+              } else if (typeof modifiedTimestamp === 'string') {
+                lastModified = modifiedTimestamp
               }
-            } else if (item.last_indexed) {
-              lastModified = item.last_indexed
             }
             
             const converted = {
@@ -128,7 +143,10 @@ export const useSearch = () => {
               file_name: item.file_name || item.file_path?.split('/').pop() || item.file_path?.split('\\').pop() || 'Unknown',
               file_size: item.file_size || 0,
               file_type: item.file_type || 'unknown',
-              last_modified: lastModified,
+              file_created: item.file_created,                    // 文件创建时间戳
+              file_modified: item.file_modified,                  // 文件实际修改时间戳
+              last_modified: lastModified,                        // 格式化的修改时间字符串
+              last_indexed: item.last_indexed,                    // 索引时间戳
               content_preview: '',
               match_score: item.match_score || item.fuzzy_score || 100,
               foundByKeyword: item.foundByKeyword
@@ -160,19 +178,17 @@ export const useSearch = () => {
         // 转换后端数据格式为前端FileItem格式
         const convertedResults = result.results.map((item: any) => {
           
-          // 处理时间戳
+          // 处理修改时间戳 - 优先使用file_modified，fallback到last_modified
           let lastModified = new Date().toISOString()
-          if (item.last_modified) {
-            // 如果是数字时间戳，需要检查是秒还是毫秒
-            if (typeof item.last_modified === 'number') {
+          const modifiedTimestamp = item.file_modified || item.last_modified
+          if (modifiedTimestamp) {
+            if (typeof modifiedTimestamp === 'number') {
               // 如果时间戳小于 1e12，说明是秒级时间戳，需要转换为毫秒
-              const timestamp = item.last_modified < 1e12 ? item.last_modified * 1000 : item.last_modified
+              const timestamp = modifiedTimestamp < 1e12 ? modifiedTimestamp * 1000 : modifiedTimestamp
               lastModified = new Date(timestamp).toISOString()
-            } else if (typeof item.last_modified === 'string') {
-              lastModified = item.last_modified
+            } else if (typeof modifiedTimestamp === 'string') {
+              lastModified = modifiedTimestamp
             }
-          } else if (item.last_indexed) {
-            lastModified = item.last_indexed
           }
           
           const converted = {

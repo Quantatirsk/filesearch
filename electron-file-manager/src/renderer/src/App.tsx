@@ -4,6 +4,7 @@ import { Toolbar } from './components/Toolbar'
 import { StatusBar } from './components/StatusBar'
 import { ChatAssistant } from './components/ChatAssistant'
 import { SearchOverlay } from './components/SearchOverlay'
+import { IndexingProgress } from './components/IndexingProgress'
 import { Toaster } from './components/ui/sonner'
 import { toast } from 'sonner'
 import { useAppStore } from './stores/app-store'
@@ -25,6 +26,10 @@ function App() {
   const [ipcSearchQuery, setIpcSearchQuery] = useState<string>('')
   const [ipcSearchType, setIpcSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>('quick')
   
+  // Indexing progress state
+  const [isIndexing, setIsIndexing] = useState(false)
+  const [showProgressCard, setShowProgressCard] = useState(true) // 控制进度卡片显示/隐藏
+  
   const { 
     selectedFiles, 
     isBackendRunning,
@@ -36,7 +41,7 @@ function App() {
     loadSettings
   } = useAppStore()
   
-  const { indexDirectory, getStats } = useApi()
+  const { indexDirectory, indexDirectoryWithProgress, getStats } = useApi()
   const { performImmediateSearch } = useSearch()
 
   // 启动时加载设置
@@ -155,44 +160,44 @@ function App() {
         // 自动索引选中的目录
         if (isBackendRunning) {
           console.log('Auto-indexing directory:', directory)
-          
-          // Show progress toast for long operations
-          const progressToast = toast.loading('正在索引目录，大型目录可能需要几分钟时间...')
+          setIsIndexing(true)
+          setShowProgressCard(true) // 确保进度卡片显示
           
           try {
-            const result = await indexDirectory({
+            const result = await indexDirectoryWithProgress({
               directory: directory,
               force: false,
-              workers: 8  // Increased workers for better performance
+              workers: 8,  // Increased workers for better performance
+              include_all_files: true  // Enable all file types indexing
+            }, (progress) => {
+              // Progress is handled by IndexingProgress component via API polling
+              console.log('Indexing progress:', progress)
             })
-            
-            // Dismiss the progress toast
-            toast.dismiss(progressToast)
             
             if (result.success) {
               console.log(`Auto-indexed ${result.indexed_files} files`)
-              toast.success(`成功索引 ${result.indexed_files} 个文件`, { duration: 5000 })
+              toast.success(`成功索引 ${result.indexed_files} 个文件`, { duration: 1000 })
               // 刷新统计信息
               console.log('🔍 [App.tsx] Loading stats after directory indexing...')
               const stats = await getStats()
               setStats(stats)
               console.log('✅ [App.tsx] Stats refreshed after indexing')
             } else {
-              console.error('Auto-indexing failed:', result.error)
-              toast.error(`索引失败: ${result.error}`, { duration: 8000 })
+              console.error('Auto-indexing failed')
+              toast.error('索引失败', { duration: 8000 })
             }
           } catch (error) {
-            // Dismiss the progress toast
-            toast.dismiss(progressToast)
             console.error('Auto-indexing error:', error)
             toast.error(`索引时发生错误: ${error}`)
+          } finally {
+            setIsIndexing(false)
           }
         }
       }
     } catch (error) {
       console.error('Failed to select directory:', error)
     }
-  }, [setCurrentDirectory, isBackendRunning, indexDirectory, getStats, setStats])
+  }, [setCurrentDirectory, isBackendRunning, indexDirectoryWithProgress, getStats, setStats])
 
   const handleCopyFiles = useCallback(async () => {
     if (selectedFiles.length === 0) return
@@ -433,7 +438,11 @@ function App() {
       </div>
 
       {/* Status Bar */}
-      <StatusBar />
+      <StatusBar 
+        isIndexing={isIndexing}
+        showProgressCard={showProgressCard}
+        onToggleProgress={() => setShowProgressCard(!showProgressCard)}
+      />
 
 
       {/* Search Overlay */}
@@ -453,6 +462,20 @@ function App() {
 
       {/* Toast Notifications */}
       <Toaster position="top-right" duration={1000} />
+
+      {/* Floating Indexing Progress - Above footer */}
+      {isIndexing && showProgressCard && (
+        <div className="fixed bottom-6 left-0 right-0 z-50">
+          <IndexingProgress 
+            isVisible={isIndexing && showProgressCard} 
+            onComplete={() => {
+              setIsIndexing(false)
+              setShowProgressCard(true) // 重置为显示状态
+            }}
+            onClose={() => setShowProgressCard(false)} // 只隐藏卡片，不停止索引
+          />
+        </div>
+      )}
     </div>
   )
 }
