@@ -97,7 +97,7 @@ const SearchingContent = memo<{
   content: string;
   enableSmoothScroll: boolean;
   isGenerating: boolean;
-}>(({ content, enableSmoothScroll, isGenerating }) => {
+}>(({ content, enableSmoothScroll }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevContentLengthRef = useRef(0);
   
@@ -149,6 +149,7 @@ const SearchingContent = memo<{
     } else {
       console.log('💨 SearchingModal: Setting content directly', processedContent.length)
       setDisplayContent(processedContent);
+      return undefined;
     }
   }, [processedContent, showContent, displayContent, enableSmoothScroll]);
 

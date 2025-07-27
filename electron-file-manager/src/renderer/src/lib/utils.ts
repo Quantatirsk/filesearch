@@ -55,7 +55,7 @@ export function getFileIcon(extension: string): string {
   return icons[extension.toLowerCase()] || '📄'
 }
 
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: string[]) => void>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {

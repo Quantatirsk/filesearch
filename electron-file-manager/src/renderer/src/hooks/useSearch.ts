@@ -3,6 +3,23 @@ import { useApi } from './useApi'
 import { useAppStore } from '../stores/app-store'
 import { debounce, parseMultiKeywords } from '../lib/utils'
 
+interface BackendSearchResultItem {
+  id?: string
+  file_path: string
+  file_name?: string
+  file_size?: number
+  file_type?: string
+  file_created?: number
+  file_modified?: number
+  last_modified?: string | number
+  last_indexed?: number
+  content_preview?: string
+  match_score?: number
+  fuzzy_score?: number
+  highlighted_content?: string
+  foundByKeyword?: string
+}
+
 export const useSearch = () => {
   const { search } = useApi()
   const settings = useAppStore(state => state.settings)
@@ -12,6 +29,10 @@ export const useSearch = () => {
   const isBackendRunning = useAppStore(state => state.isBackendRunning)
 
   const handleSearch = useCallback(async (query: string, type: string) => {
+    console.log('🚀 useSearch handleSearch called with:', { query, type })
+    console.log('🚀 Current settings object:', settings)
+    console.log('🚀 settings.fuzzyThreshold type:', typeof settings.fuzzyThreshold, settings.fuzzyThreshold)
+    
     if (!query.trim()) {
       setSearchResults([])
       setSearchQuery('')
@@ -57,6 +78,9 @@ export const useSearch = () => {
       console.log('🔍 Search Debug Info:')
       console.log('  - Query:', searchQuery)
       console.log('  - Type:', type)
+      console.log('  - fuzzyThreshold:', settings.fuzzyThreshold)
+      console.log('  - searchResultLimit:', settings.searchResultLimit)
+      console.log('  - autoSearch:', settings.autoSearch)
       console.log('  - Enabled formats count:', settings.enabledFormats?.length || 0)
       console.log('  - Total supported formats:', settings.totalSupportedFormatsCount || 'unknown')
       console.log('  - Is all formats selected:', settings.enabledFormats && settings.enabledFormats.length >= (settings.totalSupportedFormatsCount || 250))
@@ -66,25 +90,30 @@ export const useSearch = () => {
       if (type === 'quick') {
         console.log('🚀 执行快速搜索 - 并行精确搜索和路径搜索')
         
+        const fuzzyThreshold = settings.fuzzyThreshold || 60  // 确保有默认值
+        const searchLimit = settings.searchResultLimit || 9999  // 确保有默认值
+        
+        console.log('🚀 Quick search using fuzzyThreshold:', fuzzyThreshold, 'searchLimit:', searchLimit)
+        
         const [exactResult, pathResult] = await Promise.all([
           search({
             query: searchQuery,
             search_type: 'exact',
-            limit: 500,
-            min_fuzzy_score: 30.0,
+            limit: Math.floor(searchLimit / 2),
+            min_fuzzy_score: fuzzyThreshold,
             file_types: fileTypesToSend
           }),
           search({
             query: searchQuery,
             search_type: 'path',
-            limit: 500,
-            min_fuzzy_score: 30.0,
+            limit: Math.floor(searchLimit / 2),
+            min_fuzzy_score: fuzzyThreshold,
             file_types: fileTypesToSend
           })
         ])
         
         // 合并结果并去重
-        const allResults = []
+        const allResults: (BackendSearchResultItem & { foundByKeyword: string })[] = []
         const seenPaths = new Set<string>()
         
         // 先添加精确搜索结果（优先级更高）
@@ -117,12 +146,12 @@ export const useSearch = () => {
           results: allResults,
           total_results: allResults.length,
           search_time: (exactResult.search_time || 0) + (pathResult.search_time || 0),
-          limit: 1000
+          limit: settings.searchResultLimit
         }
         
         if (result.success) {
           // 转换后端数据格式为前端FileItem格式
-          const convertedResults = result.results.map((item: any) => {
+          const convertedResults = result.results.map((item: BackendSearchResultItem) => {
             
             // 处理修改时间戳 - 优先使用file_modified，fallback到last_modified
             let lastModified = new Date().toISOString()
@@ -165,18 +194,23 @@ export const useSearch = () => {
         return
       }
       
+      const fuzzyThreshold = settings.fuzzyThreshold || 60  // 确保有默认值
+      const searchLimit = settings.searchResultLimit || 9999  // 确保有默认值
+      
+      console.log('🚀 Regular search using fuzzyThreshold:', fuzzyThreshold, 'searchLimit:', searchLimit)
+      
       const result = await search({
         query: searchQuery,
         search_type: type as 'exact' | 'fuzzy' | 'path' | 'hybrid',
-        limit: 1000,
-        min_fuzzy_score: 30.0,
+        limit: searchLimit,
+        min_fuzzy_score: fuzzyThreshold,
         file_types: fileTypesToSend
       })
 
 
       if (result.success) {
         // 转换后端数据格式为前端FileItem格式
-        const convertedResults = result.results.map((item: any) => {
+        const convertedResults = result.results.map((item: BackendSearchResultItem) => {
           
           // 处理修改时间戳 - 优先使用file_modified，fallback到last_modified
           let lastModified = new Date().toISOString()

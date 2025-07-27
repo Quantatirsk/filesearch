@@ -24,7 +24,7 @@ function App() {
   
   // IPC search state - for filling main interface search bar
   const [ipcSearchQuery, setIpcSearchQuery] = useState<string>('')
-  const [ipcSearchType, setIpcSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>('quick')
+  const [ipcSearchType, setIpcSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart' | undefined>(undefined)
   
   // Indexing progress state
   const [isIndexing, setIsIndexing] = useState(false)
@@ -41,7 +41,7 @@ function App() {
     loadSettings
   } = useAppStore()
   
-  const { indexDirectory, indexDirectoryWithProgress, getStats } = useApi()
+  const { indexDirectoryWithProgress, getStats } = useApi()
   const { performImmediateSearch } = useSearch()
 
   // 启动时加载设置
@@ -294,19 +294,20 @@ function App() {
   useEffect(() => {
     const { ipcRenderer } = window.electron
     
-    const handlePerformSearch = async (event: any, query: string, searchType: string) => {
+    const handlePerformSearch = async (_event: Electron.IpcRendererEvent, query: string, searchType: string) => {
       console.log('Received perform-search IPC:', { query, searchType })
       if (query && searchType) {
         try {
           // 设置搜索参数到状态，这样SearchBar会自动填充
           console.log('Setting IPC search params:', { query, searchType })
           setIpcSearchQuery(query)
-          setIpcSearchType(searchType as any)
+          setIpcSearchType(searchType as 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart')
           
           // 延迟清理状态，确保SearchBar有时间接收到新值
           setTimeout(() => {
-            console.log('Clearing IPC search query')
+            console.log('Clearing IPC search params')
             setIpcSearchQuery('')
+            setIpcSearchType(undefined) // 同时清理搜索类型
           }, 500) // 增加延迟时间
           
           if (searchType === 'smart') {
@@ -316,7 +317,7 @@ function App() {
           } else {
             // Perform regular search
             console.log('Performing immediate search:', query, searchType)
-            await performImmediateSearch(query, searchType as any)
+            await performImmediateSearch(query, searchType as 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart')
           }
         } catch (error) {
           console.error('Error performing search from IPC:', error)
@@ -324,10 +325,10 @@ function App() {
       }
     }
 
-    ipcRenderer.on('perform-search', handlePerformSearch)
+    ipcRenderer.on('perform-search', handlePerformSearch as (...args: unknown[]) => void)
     
     return () => {
-      ipcRenderer.removeListener('perform-search', handlePerformSearch)
+      ipcRenderer.removeListener('perform-search', handlePerformSearch as (...args: unknown[]) => void)
     }
   }, [performImmediateSearch, handleOpenChatAssistantWithQuery])
 
@@ -375,6 +376,9 @@ function App() {
         }
       }
     }
+    
+    // 如果不是搜索窗口，无需清理函数
+    return undefined
   }, [isSearchWindow])
 
   // If this is a search window, only show the search overlay

@@ -30,7 +30,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
 import openai
-import os
 from dotenv import load_dotenv
 import json
 import asyncio
@@ -59,7 +58,7 @@ from parsers.base_parser import ParserFactory
 class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query string")
     search_type: str = Field("hybrid", description="Search type: exact, fuzzy, path, hybrid")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+    limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
     min_fuzzy_score: float = Field(30.0, ge=0.0, le=100.0, description="Minimum fuzzy similarity score")
     file_types: Optional[List[str]] = Field(None, description="File types to include in search")
 
@@ -78,7 +77,7 @@ class AdvancedSearchRequest(BaseModel):
     path_query: Optional[str] = Field(None, description="Path search query")
     file_types: Optional[List[str]] = Field(None, description="File types to include")
     fuzzy: bool = Field(False, description="Use fuzzy matching for content")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+    limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
 
 class MetadataSearchRequest(BaseModel):
     min_size: Optional[int] = Field(None, description="Minimum file size in bytes")
@@ -88,7 +87,7 @@ class MetadataSearchRequest(BaseModel):
     modified_after: Optional[int] = Field(None, description="Modified after timestamp")
     modified_before: Optional[int] = Field(None, description="Modified before timestamp")
     file_types: Optional[List[str]] = Field(None, description="File types to include")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+    limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
 
 class CombinedSearchRequest(BaseModel):
     content_query: Optional[str] = Field(None, description="Content search query")
@@ -98,7 +97,7 @@ class CombinedSearchRequest(BaseModel):
     created_after: Optional[int] = Field(None, description="Created after timestamp")
     created_before: Optional[int] = Field(None, description="Created before timestamp")
     file_types: Optional[List[str]] = Field(None, description="File types to include")
-    limit: int = Field(100, ge=1, le=1000, description="Maximum number of results")
+    limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
 
 class IndexRequest(BaseModel):
     directory: str = Field(..., description="Directory path to index")

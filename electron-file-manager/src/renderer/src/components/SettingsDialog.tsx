@@ -2,8 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { 
   Dialog, 
   DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
   DialogTrigger 
 } from './ui/dialog'
 import { Button } from './ui/button'
@@ -30,8 +28,6 @@ import {
   Package,
   CheckCircle,
   Circle,
-  Eye,
-  EyeOff,
   Database,
   BarChart3,
   Trash2,
@@ -40,13 +36,12 @@ import {
 
 import { useApi } from '../hooks/useApi'
 import { useAppStore } from '../stores/app-store'
-import { SupportedFormatsResponse, FormatCategory } from '../types'
 import { formatFileSize } from '../lib/utils'
 import { toast } from 'sonner'
 
 interface SettingsData {
   // 搜索设置
-  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid'
+  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
   searchResultLimit: number
   fuzzyThreshold: number
   searchDebounce: number
@@ -76,11 +71,11 @@ interface SettingsData {
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
-  defaultSearchType: 'hybrid',
-  searchResultLimit: 1000,
-  fuzzyThreshold: 30,
+  defaultSearchType: 'quick',
+  searchResultLimit: 9999,
+  fuzzyThreshold: 60,
   searchDebounce: 150,
-  autoSearch: true,
+  autoSearch: false,
   
   theme: 'system',
   language: 'zh',
@@ -89,37 +84,17 @@ const DEFAULT_SETTINGS: SettingsData = {
   showLastModified: true,
   showContentPreview: true,
   
-  enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
+  enabledCategories: ['text_files', 'archive_files'],
   enabledFormats: [
-    // Document formats
-    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.rtf',
-    // Programming files
-    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css', '.java', '.cpp', '.c', '.h',
-    '.go', '.rs', '.php', '.rb', '.swift', '.kt', '.dart', '.scala', '.sh', '.bat', '.ps1',
-    // Config files
-    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf', '.config', '.cfg', '.properties',
-    // Media files (images)
-    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp', '.ico', '.tiff', '.tif', '.raw',
-    // Media files (audio)
-    '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.ape',
-    // Media files (video)
-    '.mp4', '.avi', '.mov', '.wmv', '.mkv', '.webm', '.flv', '.m4v', '.3gp',
-    // Subtitle files
-    '.srt', '.vtt', '.ass', '.ssa', '.sub', '.sbv', '.lrc',
-    // Archive files
-    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.dmg', '.iso',
-    // Development files
-    '.makefile', '.dockerfile', '.gitignore', '.gitattributes', '.editorconfig',
-    // Office files
-    '.ppt', '.pptx', '.odt', '.ods', '.odp',
-    // E-book formats
+    // 文本文件类
+    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.rtf', '.ppt', '.pptx', '.odt', '.ods', '.odp',
     '.epub', '.mobi', '.azw', '.azw3', '.fb2',
-    // Font files
-    '.ttf', '.otf', '.woff', '.woff2', '.eot',
-    // Database files
+    '.log', '.tmp', '.bak', '.old', '.orig', '.backup',
     '.db', '.sqlite', '.sqlite3', '.mdb',
-    // Other common files
-    '.log', '.tmp', '.bak', '.old', '.orig', '.backup'
+    // 压缩文件类
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.lz', '.lzma', '.z',
+    '.dmg', '.iso', '.img', '.toast',
+    '.pkg', '.deb', '.rpm', '.msi', '.exe', '.app'
   ],
   
   serverPort: 8001,
@@ -140,13 +115,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   children, 
   onSettingsChange 
 }) => {
-  const { settings, saveSettings, settingsLoading, stats, isBackendRunning, setStats, setSearchResults } = useAppStore()
+  const { settings, saveSettings, stats, isBackendRunning, setStats, setSearchResults } = useAppStore()
   const [localSettings, setLocalSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const [isOpen, setIsOpen] = useState(false)
-  const [formatsData, setFormatsData] = useState<SupportedFormatsResponse | null>(null)
-  const [loading, setLoading] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
-  const { getSupportedFormats, clearIndex, getStats } = useApi()
+  const { clearIndex, getStats } = useApi()
 
   // 同步设置数据
   useEffect(() => {
@@ -167,57 +140,32 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     }
   }, [isOpen, settings])
 
-  // 加载格式数据
+  // 首次使用时设置默认格式
   useEffect(() => {
-    const loadFormats = async () => {
-      if (!isOpen) return
-      
-      setLoading(true)
-      try {
-        const formats = await getSupportedFormats()
-        setFormatsData(formats)
-        
-        // Update the totalSupportedFormatsCount in settings for better "all formats" detection
-        if (formats.success) {
-          const updatedSettings = {
-            ...localSettings,
-            totalSupportedFormatsCount: formats.total_count
-          }
-          setLocalSettings(updatedSettings)
-        }
-        
-        // 只在用户首次使用且没有保存过任何设置时，才从API设置默认格式
-        // 注意：永远不要覆盖用户已经保存的选择，即使是空数组
-        if (settings.enabledFormats.length === 0 && formats.success) {
-          console.log('📋 First time user, setting default formats from API')
-          const defaultFormats = [
-            ...formats.categories.documents?.formats || [],
-            ...formats.categories.programming?.formats || [],
-            ...formats.categories.web?.formats || [],
-            ...formats.categories.config?.formats || [],
-            ...formats.categories.docs?.formats || []
-          ].map(format => format.startsWith('.') ? format : `.${format}`) // 确保格式有点前缀
-          const updatedSettings = {
-            ...localSettings,
-            enabledFormats: defaultFormats,
-            totalSupportedFormatsCount: formats.total_count
-          }
-          console.log('📋 Setting default formats:', defaultFormats)
-          setLocalSettings(updatedSettings)
-        } else {
-          console.log('📋 Using existing user settings, not setting defaults')
-          console.log('  - settings object:', settings)
-          console.log('  - enabledFormats:', settings?.enabledFormats)
-        }
-      } catch (error) {
-        console.error('Failed to load formats:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
+    if (!isOpen) return
     
-    loadFormats()
-  }, [isOpen, getSupportedFormats])
+    // 只在用户首次使用且没有保存过任何设置时，才设置默认格式
+    // 注意：永远不要覆盖用户已经保存的选择，即使是空数组
+    if (settings.enabledFormats.length === 0) {
+      console.log('📋 First time user, setting default formats')
+      // 默认启用文本文件类和压缩文件类
+      const defaultFormats = [
+        ...staticCategories.text_files.formats.map(f => f.startsWith('.') ? f : `.${f}`),
+        ...staticCategories.archive_files.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+      ]
+      const updatedSettings = {
+        ...localSettings,
+        enabledFormats: defaultFormats,
+        enabledCategories: ['text_files', 'archive_files']
+      }
+      console.log('📋 Setting default formats:', defaultFormats)
+      setLocalSettings(updatedSettings)
+    } else {
+      console.log('📋 Using existing user settings, not setting defaults')
+      console.log('  - settings object:', settings)
+      console.log('  - enabledFormats:', settings?.enabledFormats)
+    }
+  }, [isOpen])
 
   // 保存设置
   const handleSave = async () => {
@@ -252,23 +200,104 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setLocalSettings(prev => ({ ...prev, [key]: value }))
   }
 
+  // 静态分类定义 - 5个分类
+  const staticCategories = {
+    text_files: {
+      name: '文本文件类',
+      description: '办公文件、文档、数据库等可读文本文件',
+      icon: 'FileText',
+      formats: [
+        // 办公文件
+        'pdf', 'docx', 'doc', 'xlsx', 'xls', 'csv', 'txt', 'md', 'rtf', 'ppt', 'pptx', 'odt', 'ods', 'odp',
+        // 电子书
+        'epub', 'mobi', 'azw', 'azw3', 'fb2',
+        // 日志和备份文件
+        'log', 'tmp', 'bak', 'old', 'orig', 'backup',
+        // 数据库文件
+        'db', 'sqlite', 'sqlite3', 'mdb'
+      ]
+    },
+    media_files: {
+      name: '多媒体类',
+      description: '图片、音频、视频、字幕等媒体文件',
+      icon: 'Monitor',
+      formats: [
+        // 图片
+        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico', 'tiff', 'tif', 'raw',
+        // 音频
+        'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'ape',
+        // 视频
+        'mp4', 'avi', 'mov', 'wmv', 'mkv', 'webm', 'flv', 'm4v', '3gp',
+        // 字幕
+        'srt', 'vtt', 'ass', 'ssa', 'sub', 'sbv', 'lrc',
+        // 字体
+        'ttf', 'otf', 'woff', 'woff2', 'eot'
+      ]
+    },
+    code_files: {
+      name: '代码类',
+      description: '编程语言源代码、脚本、配置文件、构建文件',
+      icon: 'Code',
+      formats: [
+        // 编程语言
+        'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'css', 'scss', 'sass', 'less',
+        'java', 'cpp', 'c', 'h', 'go', 'rs', 'php', 'rb', 'swift', 'kt', 'dart', 'scala',
+        'vue', 'svelte', 'astro',
+        // 脚本
+        'sh', 'bash', 'zsh', 'fish', 'bat', 'ps1', 'cmd',
+        // 配置文件（从文本类移过来）
+        'json', 'xml', 'yml', 'yaml', 'toml', 'ini', 'env', 'conf', 'config', 'cfg', 'properties',
+        // 构建和开发配置
+        'makefile', 'dockerfile', 'gitignore', 'gitattributes', 'editorconfig',
+        'cmake', 'gradle', 'maven', 'package', 'lock'
+      ]
+    },
+    archive_files: {
+      name: '压缩文件类',
+      description: '各种压缩包和归档文件',
+      icon: 'Package',
+      formats: [
+        // 压缩包
+        'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'lz', 'lzma', 'z',
+        // 磁盘镜像
+        'dmg', 'iso', 'img', 'toast',
+        // 安装包
+        'pkg', 'deb', 'rpm', 'msi', 'exe', 'app'
+      ]
+    },
+    other_files: {
+      name: '其他',
+      description: '泛指所有上述4个分类没有涵盖的文件类型',
+      icon: 'Circle',
+      formats: []  // 空数组，泛指所有其他类型
+    }
+  }
+
   // 格式管理函数
   const toggleCategory = (categoryKey: string) => {
-    const category = formatsData?.categories[categoryKey]
+    const category = staticCategories[categoryKey as keyof typeof staticCategories]
     if (!category) return
 
     const isEnabled = localSettings.enabledCategories.includes(categoryKey)
     
     if (isEnabled) {
-      // 禁用分类：从启用分类中移除，并移除该分类的所有格式
+      // 禁用分类：从启用分类中移除
       updateSetting('enabledCategories', localSettings.enabledCategories.filter(c => c !== categoryKey))
-      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
-      updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => !formatsWithDots.includes(f)))
+      
+      // 如果不是"其他"类别，则移除该分类的所有格式
+      if (categoryKey !== 'other_files') {
+        const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+        updateSetting('enabledFormats', localSettings.enabledFormats.filter(f => !formatsWithDots.includes(f)))
+      }
     } else {
-      // 启用分类：添加到启用分类，并添加该分类的所有格式
+      // 启用分类：添加到启用分类
       updateSetting('enabledCategories', [...localSettings.enabledCategories, categoryKey])
-      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
-      updateSetting('enabledFormats', [...new Set([...localSettings.enabledFormats, ...formatsWithDots])])
+      
+      // 如果不是"其他"类别，则添加该分类的所有格式
+      if (categoryKey !== 'other_files') {
+        const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+        updateSetting('enabledFormats', [...new Set([...localSettings.enabledFormats, ...formatsWithDots])])
+      }
     }
   }
 
@@ -284,10 +313,17 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   }
 
   const selectAllFormats = () => {
-    if (!formatsData) return
-    const formatsWithDots = formatsData.supported_formats.map(f => f.startsWith('.') ? f : `.${f}`)
-    updateSetting('enabledFormats', formatsWithDots)
-    updateSetting('enabledCategories', Object.keys(formatsData.categories))
+    const allFormats: string[] = []
+    const allCategories = Object.keys(staticCategories)
+    
+    allCategories.forEach(categoryKey => {
+      const category = staticCategories[categoryKey as keyof typeof staticCategories]
+      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+      allFormats.push(...formatsWithDots)
+    })
+    
+    updateSetting('enabledFormats', [...new Set(allFormats)])
+    updateSetting('enabledCategories', allCategories)
   }
 
   const deselectAllFormats = () => {
@@ -297,10 +333,14 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   // Check if all formats are selected (for "other all formats" logic)
   const isAllFormatsSelected = () => {
-    if (!formatsData) return false
-    const allFormats = formatsData.supported_formats.map(f => f.startsWith('.') ? f : `.${f}`)
-    return localSettings.enabledFormats.length === allFormats.length &&
-           allFormats.every(format => localSettings.enabledFormats.includes(format))
+    const allFormats: string[] = []
+    Object.values(staticCategories).forEach(category => {
+      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+      allFormats.push(...formatsWithDots)
+    })
+    const uniqueFormats = [...new Set(allFormats)]
+    return localSettings.enabledFormats.length === uniqueFormats.length &&
+           uniqueFormats.every(format => localSettings.enabledFormats.includes(format))
   }
 
   // 清空索引函数
@@ -343,7 +383,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
   // 获取图标组件
   const getIconComponent = (iconName: string) => {
-    const icons: { [key: string]: any } = {
+    const icons: { [key: string]: React.ComponentType<{ className?: string; size?: number | string }> } = {
       FileText,
       Code,
       Globe,
@@ -361,13 +401,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         {children}
       </DialogTrigger>
       <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col overflow-hidden">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle>
-            设置
-          </DialogTitle>
-        </DialogHeader>
-        
-        <Tabs defaultValue="overview" className="flex-1 flex flex-col">
+        <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
           <TabsList className="flex-shrink-0 grid w-full grid-cols-6 mb-4">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <PieChart className="h-4 w-4" />
@@ -394,11 +428,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               高级
             </TabsTrigger>
           </TabsList>
-          
-          <div className="flex-1 overflow-y-auto">
 
           {/* 概览页签 */}
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* 数据库统计 */}
               <Card>
@@ -504,7 +536,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </TabsContent>
 
           {/* 搜索设置 */}
-          <TabsContent value="search" className="space-y-4">
+          <TabsContent value="search" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -518,16 +550,18 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>默认搜索类型</Label>
                     <Select 
                       value={localSettings.defaultSearchType} 
-                      onValueChange={(value) => updateSetting('defaultSearchType', value as any)}
+                      onValueChange={(value) => updateSetting('defaultSearchType', value as 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart')}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="exact">精确匹配</SelectItem>
-                        <SelectItem value="fuzzy">模糊匹配</SelectItem>
-                        <SelectItem value="path">路径匹配</SelectItem>
-                        <SelectItem value="hybrid">混合匹配</SelectItem>
+                        <SelectItem value="quick">快速搜索</SelectItem>
+                        <SelectItem value="smart">智能搜索</SelectItem>
+                        <SelectItem value="exact">精确搜索</SelectItem>
+                        <SelectItem value="path">路径搜索</SelectItem>
+                        <SelectItem value="fuzzy">模糊搜索</SelectItem>
+                        <SelectItem value="hybrid">混合搜索</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -539,8 +573,11 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                       value={localSettings.searchResultLimit}
                       onChange={(e) => updateSetting('searchResultLimit', Number(e.target.value))}
                       min="10"
-                      max="10000"
+                      max="9999"
                     />
+                    <div className="text-xs text-muted-foreground">
+                      设置为9999可实现大量结果搜索，返回大部分匹配结果
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -578,7 +615,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </TabsContent>
 
           {/* 显示设置 */}
-          <TabsContent value="display" className="space-y-4">
+          <TabsContent value="display" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -592,7 +629,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>主题</Label>
                     <Select 
                       value={localSettings.theme} 
-                      onValueChange={(value) => updateSetting('theme', value as any)}
+                      onValueChange={(value) => updateSetting('theme', value as 'light' | 'dark' | 'system')}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -609,7 +646,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>界面语言</Label>
                     <Select 
                       value={localSettings.language} 
-                      onValueChange={(value) => updateSetting('language', value as any)}
+                      onValueChange={(value) => updateSetting('language', value as 'zh' | 'en')}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -625,7 +662,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Label>列表密度</Label>
                     <Select 
                       value={localSettings.listDensity} 
-                      onValueChange={(value) => updateSetting('listDensity', value as any)}
+                      onValueChange={(value) => updateSetting('listDensity', value as 'compact' | 'comfortable')}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -671,7 +708,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </TabsContent>
 
           {/* 文件设置 */}
-          <TabsContent value="files" className="space-y-4">
+          <TabsContent value="files" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -687,59 +724,71 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Circle className="h-4 w-4 mr-1" />
                     全不选
                   </Button>
-                  {formatsData && (
-                    <div className="ml-auto flex gap-2">
-                      {isAllFormatsSelected() && (
-                        <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
-                          其他所有格式
-                        </Badge>
-                      )}
-                      <Badge variant="secondary">
-                        已启用: {localSettings.enabledFormats.length} / {formatsData.total_count}
+                  <div className="ml-auto flex gap-2">
+                    {isAllFormatsSelected() && (
+                      <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                        所有格式
                       </Badge>
-                    </div>
-                  )}
+                    )}
+                    <Badge variant="secondary">
+                      已启用: {localSettings.enabledFormats.length} / {(() => {
+                        const allFormats: string[] = []
+                        Object.values(staticCategories).forEach(category => {
+                          allFormats.push(...category.formats)
+                        })
+                        return new Set(allFormats).size
+                      })()}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {loading ? (
-                  <div className="flex items-center justify-center p-8">
-                    <div className="text-muted-foreground">加载文件格式中...</div>
-                  </div>
-                ) : formatsData ? (
-                  <div className="space-y-6">
-                    {Object.entries(formatsData.categories).map(([categoryKey, category]) => {
-                      const IconComponent = getIconComponent(category.icon)
-                      const isCategoryEnabled = localSettings.enabledCategories.includes(categoryKey)
-                      const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
-                      const enabledInCategory = formatsWithDots.filter(f => localSettings.enabledFormats.includes(f)).length
-                      
-                      return (
-                        <div key={categoryKey} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <IconComponent className="h-5 w-5" />
-                              <div>
-                                <h4 className="font-medium">{category.name}</h4>
-                                <p className="text-sm text-muted-foreground">{category.description}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">
-                                {enabledInCategory}/{category.count}
-                              </Badge>
-                              <Switch
-                                checked={isCategoryEnabled}
-                                onCheckedChange={() => toggleCategory(categoryKey)}
-                              />
+                <div className="space-y-6">
+                  {Object.entries(staticCategories).map(([categoryKey, category]) => {
+                    const IconComponent = getIconComponent(category.icon)
+                    const isCategoryEnabled = localSettings.enabledCategories.includes(categoryKey)
+                    const formatsWithDots = category.formats.map(f => f.startsWith('.') ? f : `.${f}`)
+                    const enabledInCategory = formatsWithDots.filter(f => localSettings.enabledFormats.includes(f)).length
+                    
+                    return (
+                      <div key={categoryKey} className="border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <IconComponent className="h-5 w-5" />
+                            <div>
+                              <h4 className="font-medium">{category.name}</h4>
+                              <p className="text-sm text-muted-foreground">{category.description}</p>
                             </div>
                           </div>
-                          
+                          <div className="flex items-center gap-2">
+                            {categoryKey === 'other_files' ? (
+                              <Badge variant="outline">
+                                泛指所有其他
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline">
+                                {enabledInCategory}/{category.formats.length}
+                              </Badge>
+                            )}
+                            <Switch
+                              checked={isCategoryEnabled}
+                              onCheckedChange={() => toggleCategory(categoryKey)}
+                            />
+                          </div>
+                        </div>
+                        
+                        {categoryKey === 'other_files' ? (
+                          <div className="text-center py-4 text-muted-foreground">
+                            <Circle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">此分类泛指所有上述4个分类没有涵盖的文件类型</p>
+                            <p className="text-xs">启用此分类将包含所有其他未明确列出的格式</p>
+                          </div>
+                        ) : (
                           <div className="grid grid-cols-6 gap-2">
                             {category.formats.map(format => {
                               const formatWithDot = format.startsWith('.') ? format : `.${format}`
                               const isEnabled = localSettings.enabledFormats.includes(formatWithDot)
-                              const description = formatsData.format_descriptions[format] || format.toUpperCase()
+                              const description = format.toUpperCase()
                               
                               return (
                                 <div
@@ -764,21 +813,17 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                               )
                             })}
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center p-8">
-                    <div className="text-muted-foreground">无法加载文件格式数据</div>
-                  </div>
-                )}
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
 
           {/* 服务设置 */}
-          <TabsContent value="server" className="space-y-4">
+          <TabsContent value="server" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -823,7 +868,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
           </TabsContent>
 
           {/* 高级设置 */}
-          <TabsContent value="advanced" className="space-y-4">
+          <TabsContent value="advanced" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -870,7 +915,6 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
               </CardContent>
             </Card>
           </TabsContent>
-          </div>
         </Tabs>
 
         <div className="flex-shrink-0 flex justify-between pt-4 border-t">

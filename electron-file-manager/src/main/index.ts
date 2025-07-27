@@ -194,7 +194,7 @@ function setupIpcHandlers(): void {
   })
 
   // API communication
-  ipcMain.handle('api:request', async (_, options: any) => {
+  ipcMain.handle('api:request', async (_, options: import('axios').AxiosRequestConfig) => {
     return await pythonBridge.makeApiRequest(options)
   })
 
@@ -203,7 +203,7 @@ function setupIpcHandlers(): void {
     return await settingsStore.load()
   })
 
-  ipcMain.handle('settings:save', async (_, settings: any) => {
+  ipcMain.handle('settings:save', async (_, settings: import('./settings-store').SettingsData) => {
     return await settingsStore.save(settings)
   })
 

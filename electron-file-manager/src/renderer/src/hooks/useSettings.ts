@@ -3,19 +3,22 @@ import { useState, useEffect } from 'react'
 interface SettingsData {
   enabledFormats: string[]
   enabledCategories: string[]
-  [key: string]: any
+  [key: string]: unknown
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
   enabledFormats: [
-    // Default formats for common document types
-    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md',
-    // Programming files
-    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css',
-    // Config files
-    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf'
+    // 文本文件类
+    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.rtf', '.ppt', '.pptx', '.odt', '.ods', '.odp',
+    '.epub', '.mobi', '.azw', '.azw3', '.fb2',
+    '.log', '.tmp', '.bak', '.old', '.orig', '.backup',
+    '.db', '.sqlite', '.sqlite3', '.mdb',
+    // 压缩文件类
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.lz', '.lzma', '.z',
+    '.dmg', '.iso', '.img', '.toast',
+    '.pkg', '.deb', '.rpm', '.msi', '.exe', '.app'
   ],
-  enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
+  enabledCategories: ['text_files', 'archive_files'],
 }
 
 export const useSettings = () => {

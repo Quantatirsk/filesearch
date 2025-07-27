@@ -11,7 +11,6 @@ import {
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { useAppStore } from '../stores/app-store'
-import { useApi } from '../hooks/useApi'
 import { SettingsDialog } from './SettingsDialog'
 import { SearchBar } from './SearchBar'
 
@@ -41,11 +40,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     selectedFiles,
     searchResults,
     selectAllFiles,
-    clearSelection,
-    setStats
+    clearSelection
   } = useAppStore()
-  
-  const { getStats } = useApi()
 
   const handleRefreshStats = useCallback(async () => {
     // 清空搜索输入，隐藏结果区域

@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { SearchOptions, AdvancedSearchOptions, IndexOptions, SearchResult, IndexResult, DatabaseStats, SupportedFormatsResponse, FileItem } from '../types'
 import { llmWrapper } from '../lib/llmwrapper'
+import { useAppStore } from '../stores/app-store'
 
 export interface FileContentRequest {
   file_path: string
@@ -36,6 +37,7 @@ export interface UpdateFilePathResponse {
 }
 
 export const useApi = () => {
+  const settings = useAppStore(state => state.settings)
   const makeRequest = useCallback(async (options: unknown) => {
     try {
       return await window.electronAPI.api.request(options)
@@ -124,7 +126,7 @@ export const useApi = () => {
         }
       })
 
-      eventSource.addEventListener('error', (event) => {
+      eventSource.addEventListener('error', () => {
         eventSource.close()
         reject(new Error('Connection error'))
       })
@@ -213,14 +215,14 @@ export const useApi = () => {
           search({ 
             query, 
             search_type: 'exact',
-            limit: 1000,
-            min_fuzzy_score: 30
+            limit: settings.searchResultLimit,
+            min_fuzzy_score: settings.fuzzyThreshold
           }),
           search({ 
             query, 
             search_type: 'path',
-            limit: 1000,
-            min_fuzzy_score: 30
+            limit: settings.searchResultLimit,
+            min_fuzzy_score: settings.fuzzyThreshold
           })
         ])
         
@@ -272,9 +274,21 @@ export const useApi = () => {
       // 4. Use LLM to analyze relevance and provide recommendations
       const recommendation = await llmWrapper.analyzeRelevance(query, uniqueFiles)
       
+      // Convert recommended files to FileItem format
+      const convertedFiles: FileItem[] = recommendation.recommendedFiles.map(file => ({
+        id: file.file_path,
+        file_path: file.file_path,
+        file_name: file.file_name || '',
+        file_size: 0, // Not available from recommendation
+        file_type: file.file_type || '',
+        last_modified: new Date().toISOString(), // Default value
+        content_preview: file.content_preview,
+        match_score: file.match_score
+      }))
+
       return {
         response: recommendation.reasoning,
-        recommendedFiles: recommendation.recommendedFiles
+        recommendedFiles: convertedFiles
       }
     } catch (error) {
       console.error('Failed to chat with assistant:', error)
@@ -331,13 +345,13 @@ export const useApi = () => {
             search({
               query: quickQuery,
               search_type: 'exact',
-              limit: 1000,
+              limit: settings.searchResultLimit,
               min_fuzzy_score: 60
             }),
             search({
               query: quickQuery,
               search_type: 'path',
-              limit: 1000,
+              limit: settings.searchResultLimit,
               min_fuzzy_score: 60
             })
           ])
@@ -472,13 +486,13 @@ export const useApi = () => {
                 search({
                   query: quickQuery,
                   search_type: 'exact',
-                  limit: 1000,
+                  limit: settings.searchResultLimit,
                   min_fuzzy_score: 60
                 }),
                 search({
                   query: quickQuery,
                   search_type: 'path',
-                  limit: 1000,
+                  limit: settings.searchResultLimit,
                   min_fuzzy_score: 60
                 })
               ])

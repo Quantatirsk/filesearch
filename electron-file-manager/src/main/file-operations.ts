@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import { shell, clipboard } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -8,12 +8,12 @@ import { homedir, platform } from 'os'
 const execAsync = promisify(exec)
 
 export class FileOperations {
-  async copyFiles(files: string[], destination: string): Promise<{ success: boolean; message: string; results?: any[] }> {
+  async copyFiles(files: string[], destination: string): Promise<{ success: boolean; message: string; results?: Array<{ file: string; destination: string; success: boolean; error?: string }> }> {
     try {
       // Ensure destination directory exists
       await fs.mkdir(destination, { recursive: true })
 
-      const results = []
+      const results: Array<{ file: string; destination: string; success: boolean; error?: string }> = []
       
       for (const file of files) {
         try {
@@ -27,13 +27,14 @@ export class FileOperations {
           await fs.copyFile(file, destPath)
           
           results.push({
-            source: file,
+            file: file,
             destination: destPath,
             success: true
           })
         } catch (error) {
           results.push({
-            source: file,
+            file: file,
+            destination: '',
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'
           })
@@ -56,28 +57,28 @@ export class FileOperations {
     }
   }
 
-  async copyFilesToClipboard(files: string[]): Promise<{ success: boolean; message: string; results?: any[] }> {
+  async copyFilesToClipboard(files: string[]): Promise<{ success: boolean; message: string; results?: Array<{ file: string; success: boolean; error?: string }> }> {
     try {
-      const results = []
+      const results: Array<{ file: string; success: boolean; error?: string }> = []
       
       for (const file of files) {
         try {
           // Check if file exists
           await fs.access(file)
           results.push({
-            source: file,
+            file: file,
             success: true
           })
         } catch (error) {
           results.push({
-            source: file,
+            file: file,
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'
           })
         }
       }
 
-      const validFiles = results.filter(r => r.success).map(r => r.source)
+      const validFiles = results.filter(r => r.success).map(r => r.file)
       const failCount = results.filter(r => !r.success).length
 
       if (validFiles.length === 0) {
@@ -121,7 +122,7 @@ export class FileOperations {
             }
             
           } catch (bufferError) {
-            console.log('⚠️ writeBuffer method failed:', bufferError.message)
+            console.log('⚠️ writeBuffer method failed:', bufferError instanceof Error ? bufferError.message : String(bufferError))
             console.log('📋 Falling back to file path copy')
             
             // Fallback: Copy the file path so user can manually navigate
@@ -169,12 +170,12 @@ export class FileOperations {
     }
   }
 
-  async moveFiles(files: string[], destination: string): Promise<{ success: boolean; message: string; results?: any[] }> {
+  async moveFiles(files: string[], destination: string): Promise<{ success: boolean; message: string; results?: Array<{ file: string; destination: string; success: boolean; error?: string }> }> {
     try {
       // Ensure destination directory exists
       await fs.mkdir(destination, { recursive: true })
 
-      const results = []
+      const results: Array<{ file: string; destination: string; success: boolean; error?: string }> = []
       
       for (const file of files) {
         try {
@@ -188,13 +189,14 @@ export class FileOperations {
           await fs.rename(file, destPath)
           
           results.push({
-            source: file,
+            file: file,
             destination: destPath,
             success: true
           })
         } catch (error) {
           results.push({
-            source: file,
+            file: file,
+            destination: '',
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error'
           })
@@ -248,9 +250,9 @@ export class FileOperations {
     }
   }
 
-  async deleteFiles(files: string[]): Promise<{ success: boolean; message: string; results?: any[] }> {
+  async deleteFiles(files: string[]): Promise<{ success: boolean; message: string; results?: Array<{ file: string; success: boolean; error?: string }> }> {
     try {
-      const results = []
+      const results: Array<{ file: string; success: boolean; error?: string }> = []
       
       for (const file of files) {
         try {
@@ -447,7 +449,7 @@ export class FileOperations {
       const userHome = homedir()
       const currentPlatform = platform()
       
-      let desktopPath: string
+      let desktopPath: string = ''
       
       switch (currentPlatform) {
         case 'darwin': // macOS
@@ -472,7 +474,7 @@ export class FileOperations {
             }
           }
           
-          if (!desktopPath!) {
+          if (!desktopPath) {
             desktopPath = join(userHome, 'Desktop') // fallback
           }
           break

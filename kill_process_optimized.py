@@ -9,6 +9,7 @@ import sys
 import subprocess
 import psutil
 import platform
+import time
 from typing import List, Optional
 
 
@@ -65,7 +66,6 @@ def _kill_with_lsof(port: int) -> bool:
                 print(f"📤 Sent SIGTERM to process {pid}")
                 
                 # 等待3秒让进程自行关闭
-                import time
                 time.sleep(3)
                 
                 # 检查进程是否还存在
@@ -172,7 +172,6 @@ def cleanup_port_optimized(port: int, host: str = "localhost") -> None:
     # 执行清理
     if kill_process_on_port_optimized(port):
         # 等待端口释放
-        import time
         for i in range(5):  # 最多等待5秒
             time.sleep(1)
             if not is_port_in_use():

@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import { FileItem, SearchOptions, AppState, DatabaseStats } from '../types'
+import { FileItem, AppState, DatabaseStats } from '../types'
 
 interface SettingsData {
   // 搜索设置
-  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid'
+  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
   searchResultLimit: number
   fuzzyThreshold: number
   searchDebounce: number
@@ -66,11 +66,11 @@ interface AppStore extends AppState {
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
-  defaultSearchType: 'hybrid',
-  searchResultLimit: 1000,
-  fuzzyThreshold: 30,
+  defaultSearchType: 'quick',
+  searchResultLimit: 9999,
+  fuzzyThreshold: 60,
   searchDebounce: 150,
-  autoSearch: true,
+  autoSearch: false,
   
   theme: 'system',
   language: 'zh',
@@ -79,14 +79,17 @@ const DEFAULT_SETTINGS: SettingsData = {
   showLastModified: true,
   showContentPreview: true,
   
-  enabledCategories: ['documents', 'programming', 'web', 'config', 'shell', 'docs', 'build'],
+  enabledCategories: ['text_files', 'archive_files'],
   enabledFormats: [
-    // Default formats for common document types
-    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md',
-    // Programming files
-    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.xml', '.html', '.css',
-    // Config files
-    '.yml', '.yaml', '.toml', '.ini', '.env', '.conf'
+    // 文本文件类
+    '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.csv', '.txt', '.md', '.rtf', '.ppt', '.pptx', '.odt', '.ods', '.odp',
+    '.epub', '.mobi', '.azw', '.azw3', '.fb2',
+    '.log', '.tmp', '.bak', '.old', '.orig', '.backup',
+    '.db', '.sqlite', '.sqlite3', '.mdb',
+    // 压缩文件类
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.lz', '.lzma', '.z',
+    '.dmg', '.iso', '.img', '.toast',
+    '.pkg', '.deb', '.rpm', '.msi', '.exe', '.app'
   ],
   
   serverPort: 8001,
@@ -120,7 +123,7 @@ export const useAppStore = create<AppStore>()(
       setCurrentDirectory: (directory) => set({ currentDirectory: directory }),
       
       setSearchResults: (results) => {
-        set((state) => ({ 
+        set(() => ({ 
           searchResults: results,
           selectedFiles: [] // Clear selection when new results come in
         }), false, 'setSearchResults')

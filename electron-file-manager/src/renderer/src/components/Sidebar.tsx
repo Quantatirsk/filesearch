@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react'
 import { FileText, Database, BarChart3, Trash2 } from 'lucide-react'
-import { Separator } from './ui/separator'
 import { Button } from './ui/button'
 import { useAppStore } from '../stores/app-store'
 import { useApi } from '../hooks/useApi'

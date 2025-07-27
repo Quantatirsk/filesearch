@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Progress } from './ui/progress'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Card, CardContent, CardHeader } from './ui/card'
 import { Clock, FileText, Zap, ChevronDown } from 'lucide-react'
 
 interface IndexingProgressProps {

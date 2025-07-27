@@ -421,6 +421,8 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
     }
+    
+    return undefined
   }, [contextMenuOpen, handleContextMenuClose])
 
   // 优化的行组件 - 使用 flex 布局替代表格，实现完全紧凑的布局

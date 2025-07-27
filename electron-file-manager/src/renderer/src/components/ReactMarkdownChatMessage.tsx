@@ -27,10 +27,11 @@ export const ReactMarkdownChatMessage: React.FC<ReactMarkdownChatMessageProps> =
           remarkPlugins={[remarkGfm]}
           components={{
             // Compact code blocks for chat
-            code({ node, inline, className, children, ...props }) {
+            code({ className, children, ...props }) {
               const match = /language-(\w+)/.exec(className || '')
+              const isInline = !className || !match
               
-              return !inline && match ? (
+              return !isInline && match ? (
                 <SyntaxHighlighter
                   style={oneDark}
                   language={match[1]}
@@ -41,7 +42,6 @@ export const ReactMarkdownChatMessage: React.FC<ReactMarkdownChatMessageProps> =
                     padding: '6px 8px',
                     margin: '2px 0'
                   }}
-                  {...props}
                 >
                   {String(children).replace(/\n$/, '')}
                 </SyntaxHighlighter>

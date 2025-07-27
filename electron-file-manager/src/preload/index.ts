@@ -36,7 +36,7 @@ const customElectronAPI: CustomElectronAPI = {
       return () => ipcRenderer.removeListener('show-search-overlay', callback)
     },
     onSetSearchWindow: (callback: (isSearchWindow: boolean) => void) => {
-      ipcRenderer.on('set-search-window', callback)
+      ipcRenderer.on('set-search-window', (_event, isSearchWindow: boolean) => callback(isSearchWindow))
       return () => ipcRenderer.removeListener('set-search-window', callback)
     },
     openMainWindow: (query: string, searchType: string) => 

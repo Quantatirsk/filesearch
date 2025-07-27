@@ -4,7 +4,7 @@ import { promises as fs } from 'fs'
 
 export interface SettingsData {
   // 搜索设置
-  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid'
+  defaultSearchType: 'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'
   searchResultLimit: number
   fuzzyThreshold: number
   searchDebounce: number
@@ -34,11 +34,11 @@ export interface SettingsData {
 }
 
 export const DEFAULT_SETTINGS: SettingsData = {
-  defaultSearchType: 'hybrid',
-  searchResultLimit: 1000,
-  fuzzyThreshold: 30,
+  defaultSearchType: 'quick',
+  searchResultLimit: 9999,
+  fuzzyThreshold: 60,
   searchDebounce: 150,
-  autoSearch: true,
+  autoSearch: false,
   
   theme: 'system',
   language: 'zh',
@@ -119,16 +119,22 @@ export class SettingsStore {
 
   private validateSettings(settings: SettingsData = this.settings): void {
     // 验证搜索设置
-    if (!['exact', 'fuzzy', 'path', 'hybrid'].includes(settings.defaultSearchType)) {
-      settings.defaultSearchType = 'hybrid'
+    if (!['exact', 'fuzzy', 'path', 'hybrid', 'quick', 'smart'].includes(settings.defaultSearchType)) {
+      settings.defaultSearchType = 'quick'
     }
     
-    if (settings.searchResultLimit < 10 || settings.searchResultLimit > 10000) {
-      settings.searchResultLimit = 1000
+    // 验证并迁移搜索结果限制设置
+    if (settings.searchResultLimit < 10 || settings.searchResultLimit > 9999) {
+      settings.searchResultLimit = 9999
     }
     
     if (settings.fuzzyThreshold < 0 || settings.fuzzyThreshold > 100) {
-      settings.fuzzyThreshold = 30
+      settings.fuzzyThreshold = 60
+    }
+    
+    // 迁移旧的默认值 30 到新的默认值 60
+    if (settings.fuzzyThreshold === 30) {
+      settings.fuzzyThreshold = 60
     }
     
     if (settings.searchDebounce < 0 || settings.searchDebounce > 1000) {

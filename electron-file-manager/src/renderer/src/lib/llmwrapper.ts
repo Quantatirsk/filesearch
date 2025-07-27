@@ -295,9 +295,9 @@ export class LLMWrapper {
   /**
    * Analyze file relevance and provide recommendations (non-streaming)
    */
-  async analyzeRelevance(userQuery: string, files: any[]): Promise<{
+  async analyzeRelevance(userQuery: string, files: Array<{ file_path: string; file_name: string; file_type?: string; content_preview?: string; match_score?: number }>): Promise<{
     reasoning: string
-    recommendedFiles: any[]
+    recommendedFiles: Array<{ file_path: string; file_name: string; file_type?: string; content_preview?: string; match_score?: number }>
   }> {
     const filesInfo = files.slice(0, 20).map(file => ({
       path: file.file_path,
