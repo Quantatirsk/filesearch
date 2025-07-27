@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { Search, Loader2, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useSearch } from '../hooks/useSearch'
 import { useAppStore } from '../stores/app-store'
 
@@ -24,7 +24,7 @@ const searchModes: { value: SearchMode; label: string; description: string }[] =
 export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose, onOpenChatAssistant, onSearchAndOpenMain }) => {
   const [query, setQuery] = useState('')
   const [selectedMode, setSelectedMode] = useState<SearchMode>('quick')
-  const [isSearching, setIsSearching] = useState(false)
+  const [localIsSearching, setLocalIsSearching] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isFocused, setIsFocused] = useState(false)
@@ -33,7 +33,10 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
   const overlayRef = useRef<HTMLDivElement>(null)
   
   const { performImmediateSearch } = useSearch()
-  const { isBackendRunning, searchResults, setSearchResults } = useAppStore()
+  const { isBackendRunning, searchResults, setSearchResults, isSearching: globalIsSearching } = useAppStore()
+  
+  // Use global search state if available, otherwise use local state
+  const isSearching = globalIsSearching || localIsSearching
   
   
   // 启动时加载设置
@@ -116,13 +119,13 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
     
     // For other search modes in normal overlay - hide first then search
     onClose()
-    setIsSearching(true)
+    setLocalIsSearching(true)
     try {
       await performImmediateSearch(searchQuery, currentMode)
     } catch (error) {
       console.error('Search error:', error)
     } finally {
-      setIsSearching(false)
+      setLocalIsSearching(false)
     }
   }, [query, selectedMode, isBackendRunning, performImmediateSearch, onOpenChatAssistant, onClose, onSearchAndOpenMain])
 
@@ -193,9 +196,9 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
           </button>
         )}
         
-        {isSearching && (
+        {localIsSearching && (
           <div className="p-1.5">
-            <Loader2 className="text-gray-600 dark:text-gray-300 animate-spin" size={16} />
+            <div className="animate-spin rounded-full border-2 border-gray-400 border-t-transparent w-4 h-4" />
           </div>
         )}
         

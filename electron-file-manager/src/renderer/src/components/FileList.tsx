@@ -45,6 +45,7 @@ import {
   Bot
 } from 'lucide-react'
 import { FinalStreamingRenderer } from './FinalStreamingRenderer'
+import { BackendStartupLoader, SearchLoader, NoResultsLoader } from './LottieLoader'
 
 interface FileListProps {
   containerRef: React.RefObject<HTMLDivElement>
@@ -64,6 +65,8 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     searchResults: state.searchResults,
     selectedFiles: state.selectedFiles,
     isBackendRunning: state.isBackendRunning,
+    backendStarting: state.backendStarting,
+    isSearching: state.isSearching,
     searchQuery: state.searchQuery,
     selectAllFiles: state.selectAllFiles,
     clearSelection: state.clearSelection
@@ -605,7 +608,18 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     </TooltipProvider>
   ))
 
-  if (!appState.isBackendRunning) {
+  // Show Lottie loading animation when backend is starting up
+  if (appState.backendStarting && !appState.isBackendRunning) {
+    return (
+      <BackendStartupLoader 
+        message="正在启动 FastAPI 后端服务..."
+        size={100}
+      />
+    )
+  }
+
+  // Show static message when backend is not running and not starting
+  if (!appState.isBackendRunning && !appState.backendStarting) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <div className="text-center">
@@ -617,13 +631,44 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
     )
   }
 
+  // Show search animation when searching
+  if (appState.isSearching) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="text-center">
+          <div className="mb-6">
+            <SearchLoader size={100} className="mx-auto" />
+          </div>
+          <div className="text-lg font-medium mb-2">正在搜索文件...</div>
+          <div className="text-sm opacity-70">
+            {appState.searchQuery ? `搜索关键词: "${appState.searchQuery}"` : '请稍候，搜索进行中...'}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (appState.searchResults.length === 0) {
+    // 如果有搜索关键词但没有结果，显示失败动画
+    if (appState.searchQuery && appState.searchQuery.trim()) {
+      return (
+        <NoResultsLoader 
+          size={160} 
+          searchQuery={appState.searchQuery}
+        />
+      )
+    }
+    
+    // 如果没有搜索关键词，显示搜索提示
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         <div className="text-center">
           <div className="text-6xl mb-4">🔍</div>
           <div className="text-lg">输入搜索关键词</div>
           <div className="text-sm">在搜索框中输入关键词，然后按Enter或点击搜索按钮</div>
+          <div className="text-xs mt-3 opacity-60">
+            提示：可以使用 Tab 键切换搜索模式
+          </div>
         </div>
       </div>
     )

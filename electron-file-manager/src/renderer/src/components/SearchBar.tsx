@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { Input } from './ui/input'
 import { Button } from './ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
@@ -21,7 +21,7 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
   const [inputValue, setInputValue] = useState('')
   const [searchType, setSearchType] = useState<'exact' | 'fuzzy' | 'path' | 'hybrid' | 'quick' | 'smart'>(settings.defaultSearchType)
   
-  // 使用本地状态跟踪搜索状态，避免全局状态的影响
+  // 使用本地搜索状态控制搜索框内的小动画
   const [localSearching, setLocalSearching] = useState(false)
   // 追踪中文输入法的组合状态
   const [isComposing, setIsComposing] = useState(false)
@@ -71,13 +71,13 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
   
   // 移除自动聚焦逻辑 - 让用户在搜索完成后专注于结果而不是输入框
   // useEffect(() => {
-  //   if (!localSearching && inputRef.current && !isSettingExternalValue.current) {
+  //   if (!isSearching && inputRef.current && !isSettingExternalValue.current) {
   //     // 只有在没有设置外部值时才重新聚焦
   //     setTimeout(() => {
   //       inputRef.current?.focus()
   //     }, 0)
   //   }
-  // }, [localSearching])
+  // }, [isSearching])
 
   const handleInputChange = useCallback((value: string) => {
     setInputValue(value)
@@ -97,11 +97,12 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
       
       // 使用防抖进行自动搜索
       autoSearchTimeoutRef.current = setTimeout(() => {
-        setLocalSearching(true)
-        setTimeout(() => setLocalSearching(false), 200)
-        
+        setLocalSearching(true);
         performImmediateSearch(value.trim(), searchType)
         onSearch?.(value.trim(), searchType)
+        
+        // 800ms 后隐藏动画
+        setTimeout(() => setLocalSearching(false), 800);
         
         // 执行搜索后让输入框失焦
         inputRef.current?.blur()
@@ -133,12 +134,14 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
         return
       }
       
-      setLocalSearching(true)
-      setTimeout(() => setLocalSearching(false), 200)
+      setLocalSearching(true);
       
       // 执行搜索，搜索关键词会在 useSearch 中设置
       performImmediateSearch(inputValue.trim(), searchType)
       onSearch?.(inputValue.trim(), searchType)
+      
+      // 800ms 后隐藏动画
+      setTimeout(() => setLocalSearching(false), 800);
       
       // 执行搜索后让输入框失焦
       inputRef.current?.blur()
@@ -163,23 +166,43 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
       
       // 延迟触发搜索
       autoSearchTimeoutRef.current = setTimeout(() => {
-        setLocalSearching(true)
-        setTimeout(() => setLocalSearching(false), 200)
-        
+        setLocalSearching(true);
         performImmediateSearch(inputValue.trim(), searchType)
         onSearch?.(inputValue.trim(), searchType)
+        
+        // 800ms 后隐藏动画
+        setTimeout(() => setLocalSearching(false), 800);
         
         inputRef.current?.blur()
       }, settings.searchDebounce)
     }
   }, [settings.autoSearch, settings.searchDebounce, inputValue, searchType, isBackendRunning, performImmediateSearch, onSearch])
 
+  // 获取所有搜索模式列表
+  const searchModes: Array<'quick' | 'smart' | 'exact' | 'path' | 'fuzzy' | 'hybrid'> = [
+    'quick', 'smart', 'exact', 'path', 'fuzzy', 'hybrid'
+  ]
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !isComposing) {
       e.preventDefault()
       executeSearch()
     }
-  }, [executeSearch, isComposing])
+    
+    // Tab 键切换搜索模式（仅在输入框获得焦点时）
+    if (e.key === 'Tab' && !isComposing) {
+      e.preventDefault()
+      const currentIndex = searchModes.indexOf(searchType)
+      const nextIndex = (currentIndex + 1) % searchModes.length
+      const nextMode = searchModes[nextIndex]
+      setSearchType(nextMode)
+      
+      // 保持输入框焦点
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 0)
+    }
+  }, [executeSearch, isComposing, searchType, searchModes])
 
   return (
     <div className="flex items-center gap-2 w-full">
@@ -189,8 +212,8 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
           ref={inputRef}
           placeholder={isBackendRunning 
             ? settings.autoSearch 
-              ? "搜索文件 (支持多个关键词，空格分隔) - 边输入边搜索已启用" 
-              : "搜索文件 (支持多个关键词，空格分隔) - 按Enter或点击搜索按钮..."
+              ? "搜索文件 (Tab切换模式，空格分隔关键词) - 边输入边搜索已启用" 
+              : "搜索文件 (Tab切换模式，Enter搜索，空格分隔关键词)"
             : "请先启动后端服务..."
           }
           value={inputValue}
@@ -202,7 +225,9 @@ export const SearchBar: React.FC<SearchBarProps> = React.memo(({ onSearch, onOpe
           disabled={localSearching || !isBackendRunning}
         />
         {localSearching ? (
-          <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 animate-spin" />
+          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+            <div className="animate-spin rounded-full border-2 border-primary border-t-transparent w-3 h-3" />
+          </div>
         ) : (
           <Button
             size="sm"

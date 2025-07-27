@@ -34,9 +34,11 @@ function App() {
     selectedFiles, 
     isBackendRunning,
     searchQuery,
+    settings,
     setCurrentDirectory, 
     clearSelection,
     setBackendRunning,
+    setBackendStarting,
     setStats,
     loadSettings
   } = useAppStore()
@@ -88,12 +90,30 @@ function App() {
       return
     }
     
+    const initializeApp = async () => {
+      // First load settings
+      await loadSettings()
+    }
+    
+    initializeApp()
+  }, [isSearchWindow, loadSettings])
+
+  // Start backend after settings are loaded
+  useEffect(() => {
+    if (isSearchWindow || !settings.autoStartBackend || isBackendRunning) {
+      return
+    }
+    
     const initializeBackend = async () => {
       try {
         console.log('[MainWindow] Auto starting backend service...')
+        // Set starting state to show loading animation
+        setBackendStarting(true)
+        
         const result = await window.electronAPI.python.start()
         if (result.success) {
           setBackendRunning(true)
+          setBackendStarting(false)
           console.log('[MainWindow] Backend service started successfully')
           
           // 后端启动成功后，加载统计信息
@@ -125,6 +145,7 @@ function App() {
         } else {
           console.error('[MainWindow] Failed to start backend:', result)
           setBackendRunning(false)
+          setBackendStarting(false)
           setStats({
             success: false,
             document_count: 0,
@@ -137,6 +158,7 @@ function App() {
       } catch (error) {
         console.error('[MainWindow] Failed to initialize backend:', error)
         setBackendRunning(false)
+        setBackendStarting(false)
         setStats({
           success: false,
           document_count: 0,
@@ -149,7 +171,7 @@ function App() {
     }
 
     initializeBackend()
-  }, [isSearchWindow]) // 添加 isSearchWindow 依赖
+  }, [isSearchWindow, settings.autoStartBackend]) // 更新依赖
 
   const handleSelectDirectory = useCallback(async () => {
     try {
