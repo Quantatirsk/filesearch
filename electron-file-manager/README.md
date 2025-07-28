@@ -1,4 +1,4 @@
-# Electron File Manager
+# Electron File Searcher
 
 基于 Electron + React + Vite + shadcn/ui 的高性能文件搜索管理器
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Python 后端打包脚本
 使用 PyInstaller 将 FastAPI 后端打包成独立可执行文件
@@ -7,8 +8,12 @@ Python 后端打包脚本
 import os
 import sys
 import subprocess
-import shutil
 from pathlib import Path
+
+# 设置输出编码以避免 Windows 控制台编码问题
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
 
 def build_backend():
     """构建 Python 后端为独立可执行文件"""
@@ -17,13 +22,13 @@ def build_backend():
     script_dir = Path(__file__).parent
     os.chdir(script_dir)
     
-    print("🔧 开始构建 Python 后端...")
+    print("[INFO] 开始构建 Python 后端...")
     
     # 检查 PyInstaller 是否安装
     try:
         subprocess.run(['pyinstaller', '--version'], check=True, capture_output=True)
     except subprocess.CalledProcessError:
-        print("❌ PyInstaller 未安装，正在安装...")
+        print("[ERROR] PyInstaller 未安装，正在安装...")
         subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
     
     # PyInstaller 构建配置
@@ -44,9 +49,9 @@ def build_backend():
     
     # 执行构建
     try:
-        print("📦 执行 PyInstaller 构建...")
+        print("[INFO] 执行 PyInstaller 构建...")
         result = subprocess.run(pyinstaller_args, check=True, capture_output=True, text=True)
-        print("✅ Python 后端构建成功！")
+        print("[SUCCESS] Python 后端构建成功！")
         
         # 显示构建输出
         if result.stdout:
@@ -54,7 +59,7 @@ def build_backend():
             print(result.stdout)
             
     except subprocess.CalledProcessError as e:
-        print(f"❌ 构建失败: {e}")
+        print(f"[ERROR] 构建失败: {e}")
         if e.stdout:
             print("标准输出:")
             print(e.stdout)
@@ -66,11 +71,11 @@ def build_backend():
     # 验证构建结果
     backend_executable = output_dir / ('filesearch-backend.exe' if sys.platform == 'win32' else 'filesearch-backend')
     if backend_executable.exists():
-        print(f"✅ 后端可执行文件已生成: {backend_executable}")
-        print(f"📊 文件大小: {backend_executable.stat().st_size / 1024 / 1024:.1f} MB")
+        print(f"[SUCCESS] 后端可执行文件已生成: {backend_executable}")
+        print(f"[INFO] 文件大小: {backend_executable.stat().st_size / 1024 / 1024:.1f} MB")
         return True
     else:
-        print(f"❌ 未找到构建的可执行文件: {backend_executable}")
+        print(f"[ERROR] 未找到构建的可执行文件: {backend_executable}")
         return False
 
 if __name__ == '__main__':

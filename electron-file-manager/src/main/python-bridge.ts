@@ -247,52 +247,98 @@ export class PythonBridge {
   private async ensureCondaEnvironment(): Promise<string> {
     const envName = 'file'
     const homeDir = os.homedir()
+    const isWindows = process.platform === 'win32'
     
-    // 查找 conda 安装路径
-    const condaPaths = [
-      join(homeDir, 'miniforge3'),
-      join(homeDir, 'anaconda3'), 
-      join(homeDir, 'miniconda3'),
-      join(homeDir, 'mambaforge')
+    // 直接检查已知的环境路径
+    const knownEnvPaths = isWindows ? [
+      join(homeDir, '.conda', 'envs', envName),  // 用户级环境
+      'C:\\ProgramData\\miniconda3\\envs\\' + envName,
+      'C:\\ProgramData\\anaconda3\\envs\\' + envName,
+      join(homeDir, 'miniconda3', 'envs', envName),
+      join(homeDir, 'anaconda3', 'envs', envName)
+    ] : [
+      join(homeDir, 'miniforge3', 'envs', envName),
+      join(homeDir, 'anaconda3', 'envs', envName),
+      join(homeDir, 'miniconda3', 'envs', envName)
     ]
     
-    let condaPath = ''
-    let condaCommand = ''
-    
-    // 找到第一个存在的 conda 安装
-    for (const path of condaPaths) {
-      if (existsSync(join(path, 'bin', 'conda'))) {
-        condaPath = path
-        condaCommand = join(path, 'bin', 'conda')
+    // 查找现有环境
+    let envPath = ''
+    for (const path of knownEnvPaths) {
+      if (existsSync(path)) {
+        envPath = path
         break
       }
     }
     
-    if (!condaPath) {
+    // 如果找到现有环境，直接使用
+    if (envPath) {
+      console.log(`✅ Found existing conda environment "${envName}":`, envPath)
+      const pythonExecutable = isWindows ? 'python.exe' : 'python'
+      const pythonPath = join(envPath, isWindows ? '' : 'bin', pythonExecutable)
+      
+      if (!existsSync(pythonPath)) {
+        throw new Error(`❌ Python not found in conda environment: ${pythonPath}`)
+      }
+      
+      // 检查并安装依赖
+      await this.ensureDependencies(pythonPath)
+      return pythonPath
+    }
+    
+    // 如果没有找到环境，需要创建，先找conda安装
+    const condaPaths = isWindows ? [
+      'C:\\ProgramData\\miniconda3',
+      'C:\\ProgramData\\anaconda3',
+      join(homeDir, 'miniconda3'),
+      join(homeDir, 'anaconda3')
+    ] : [
+      join(homeDir, 'miniforge3'),
+      join(homeDir, 'anaconda3'), 
+      join(homeDir, 'miniconda3')
+    ]
+    
+    let condaCommand = ''
+    
+    for (const path of condaPaths) {
+      const condaExecutable = isWindows 
+        ? join(path, 'Scripts', 'conda.exe')
+        : join(path, 'bin', 'conda')
+      
+      if (existsSync(condaExecutable)) {
+        condaCommand = condaExecutable
+        break
+      }
+    }
+    
+    if (!condaCommand) {
       throw new Error('❌ No conda installation found. Please install miniforge, anaconda, or miniconda.')
     }
     
-    console.log('✅ Found conda installation:', condaPath)
+    // 创建环境
+    console.log(`🔧 Creating conda environment "${envName}"...`)
+    await this.createCondaEnvironment(condaCommand, envName)
     
-    // 检查环境是否存在
-    const envPath = join(condaPath, 'envs', envName)
-    const pythonPath = join(envPath, 'bin', 'python')
-    
-    if (!existsSync(envPath)) {
-      console.log(`🔧 Creating conda environment "${envName}"...`)
-      await this.createCondaEnvironment(condaCommand, envName)
-    } else {
-      console.log(`✅ Conda environment "${envName}" exists`)
+    // 再次查找新创建的环境
+    for (const path of knownEnvPaths) {
+      if (existsSync(path)) {
+        envPath = path
+        break
+      }
     }
     
-    // 验证 Python 可执行文件
+    if (!envPath) {
+      throw new Error(`❌ Failed to create conda environment "${envName}"`)
+    }
+    
+    const pythonExecutable = isWindows ? 'python.exe' : 'python'
+    const pythonPath = join(envPath, isWindows ? '' : 'bin', pythonExecutable)
+    
     if (!existsSync(pythonPath)) {
       throw new Error(`❌ Python not found in conda environment: ${pythonPath}`)
     }
     
-    // 检查并安装依赖
     await this.ensureDependencies(pythonPath)
-    
     return pythonPath
   }
   

@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 
+# Fix Windows multiprocessing in packaged exe
+if __name__ == "__main__":
+    mp.freeze_support()
+
 from utils.file_utils import FileUtils
 from parsers.base_parser import ParserFactory
 from core.database import DocumentDatabase

@@ -1,0 +1,28 @@
+appId: com.filemanager.app
+productName: File Searcher
+directories:
+  output: dist
+files:
+  - out/**/*
+  - resources/**/*
+extraResources:
+  - from: resources/python/
+    to: python/
+    filter:
+      - "**/*"
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  icon: resources/icons/search-256.png
+mac:
+  category: public.app-category.productivity
+  icon: resources/icons/search.icns
+linux:
+  target: AppImage
+  icon: resources/icons/search-512.png
+forceCodeSigning: false

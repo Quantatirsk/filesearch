@@ -13,6 +13,11 @@ import psutil
 import socket
 from pathlib import Path
 
+# Fix Windows multiprocessing issue in packaged exe
+if __name__ == "__main__":
+    import multiprocessing as mp
+    mp.freeze_support()
+
 # Fix Windows encoding issue for emoji display
 if sys.platform == "win32":
     try:
@@ -212,7 +217,6 @@ app.add_middleware(
 # Global configuration - use absolute paths for PyInstaller compatibility
 if hasattr(sys, '_MEIPASS'):
     # PyInstaller bundle environment - use user's home directory
-    import os
     user_home = Path.home()
     app_data_dir = user_home / ".filesearch"
     app_data_dir.mkdir(exist_ok=True)

@@ -30,7 +30,7 @@ A comprehensive, high-performance document indexing and search system with **AI 
 ### ⚡ Multi-Interface Architecture
 - **Command Line Interface**: Full-featured CLI with interactive mode
 - **REST API Server**: FastAPI with OpenAPI documentation and streaming support
-- **Desktop Application**: Modern Electron-based file manager with integrated AI chat
+- **Desktop Application**: Modern Electron-based file searcher with integrated AI chat
 
 ### 🏗️ Concurrent Processing Architecture
 - **Multi-process Indexing**: Full multi-core CPU utilization
@@ -91,8 +91,8 @@ echo "OPENAI_BASE_URL=https://api.openai.com/v1" >> .env
 # Index a directory with default settings
 python main.py index /path/to/documents
 
-# High-performance indexing with 8 workers
-python main.py index /path/to/documents --workers 8 --force
+# High-performance indexing with auto-detected workers (or specify custom count)
+python main.py index /path/to/documents --workers $(nproc) --force
 ```
 
 #### 2. Search Your Documents
@@ -166,7 +166,7 @@ npm start
 
 **Desktop App Features:**
 - 🤖 **AI Chat Assistant**: Natural language file search
-- 📁 **File Manager**: Browse and manage your indexed documents
+- 📁 **File Searcher**: Browse and manage your indexed documents
 - ⚡ **Real-time Search**: Instant search with live results
 - 📈 **Visual Analytics**: Search statistics and file insights
 

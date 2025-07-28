@@ -75,9 +75,9 @@ filesearch/
 │   ├── resources/python/           # Python 后端可执行文件
 │   │   └── filesearch-backend(.exe)
 │   └── dist/                       # 最终发布版本
-│       ├── File Manager-1.0.0.exe     # Windows 安装包
-│       ├── File Manager-1.0.0.dmg     # macOS 安装包
-│       └── File Manager-1.0.0.AppImage # Linux 安装包
+│       ├── File Searcher-1.0.0.exe     # Windows 安装包
+│       ├── File Searcher-1.0.0.dmg     # macOS 安装包
+│       └── File Searcher-1.0.0.AppImage # Linux 安装包
 └── build/                          # 构建临时文件
 ```
 

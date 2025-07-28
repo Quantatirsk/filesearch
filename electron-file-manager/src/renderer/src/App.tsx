@@ -189,7 +189,7 @@ function App() {
             const result = await indexDirectoryWithProgress({
               directory: directory,
               force: false,
-              workers: 8,  // Increased workers for better performance
+              workers: navigator.hardwareConcurrency || 4,  // Auto-detect CPU cores with fallback
               include_all_files: true  // Enable all file types indexing
             }, (progress) => {
               // Progress is handled by IndexingProgress component via API polling

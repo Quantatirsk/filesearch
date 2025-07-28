@@ -164,7 +164,7 @@
   @apply bg-muted-foreground/80;
 }
 
-/* File manager specific styles */
+/* File Searcher specific styles */
 .file-list-container {
   height: calc(100vh - 120px);
 }

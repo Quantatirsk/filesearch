@@ -11,7 +11,7 @@
     "build": "electron-vite build",
     "build:python": "cd .. && python build_backend.py",
     "build:full": "npm run build:python && electron-vite build",
-    "build:win": "npm run build:full && electron-builder --win",
+    "build:win": "npm run build:full && set ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true&& electron-builder --win --config electron-builder.yml",
     "build:mac": "npm run build:full && electron-builder --mac",
     "build:linux": "npm run build:full && electron-builder --linux",
     "preview": "electron-vite preview",
@@ -66,7 +66,7 @@
     "@vitejs/plugin-react": "^4.0.4",
     "autoprefixer": "^10.4.16",
     "electron": "^32.3.3",
-    "electron-builder": "^24.6.3",
+    "electron-builder": "^22.14.13",
     "electron-vite": "^4.0.0",
     "eslint": "^8.46.0",
     "eslint-plugin-react": "^7.33.1",
@@ -84,10 +84,17 @@
   },
   "build": {
     "appId": "com.filemanager.app",
-    "productName": "File Manager",
+    "productName": "File Searcher",
     "directories": {
       "output": "dist"
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "afterSign": false,
+    "forceCodeSigning": false,
+    "electronVersion": "32.3.3",
     "files": [
       "out/**/*",
       "resources/**/*"
@@ -106,8 +113,22 @@
       "icon": "resources/icons/search.icns"
     },
     "win": {
-      "target": "nsis",
-      "icon": "resources/icons/search-256.png"
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icons/search-256.png",
+      "sign": false
     },
     "linux": {
       "target": "AppImage",

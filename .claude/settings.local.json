@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where conda)",
+      "Bash(conda info:*)",
+      "Bash(dir)",
+      "Bash(npm run:*)",
+      "Bash(pip install:*)",
+      "Bash(set ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true)",
+      "Bash(electron-builder:*)",
+      "Bash(npx electron-builder:*)",
+      "Bash(npm install:*)",
+      "Bash(npm show:*)",
+      "Bash(node build-manual.js)",
+      "Bash(set CSC_IDENTITY_AUTO_DISCOVERY=false)",
+      "Bash(set DEBUG=electron-builder)",
+      "Bash(node manual-package.js)",
+      "Bash(taskkill:*)",
+      "Bash(wmic process where:*)",
+      "Bash(rmdir:*)",
+      "Bash(rd:*)",
+      "Bash(powershell:*)",
+      "Bash(python:*)"
+    ],
+    "deny": []
+  }
+}

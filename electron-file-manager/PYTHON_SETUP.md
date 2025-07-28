@@ -1,6 +1,6 @@
 # Python Environment Setup for Development
 
-This document explains the **simplified** Python environment setup for the Electron File Manager.
+This document explains the **simplified** Python environment setup for the Electron File Searcher.
 
 ## Automatic Setup (Recommended)
 

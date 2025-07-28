@@ -18,7 +18,7 @@ pip install -r requirements.txt
 ### Core CLI Commands
 ```bash
 # Index documents (primary workflow) - NO FILE SIZE LIMITS
-python main.py index /path/to/documents --workers 8 --force
+python main.py index /path/to/documents --workers $(nproc) --force
 
 # Search operations
 python main.py search "query" --type exact --limit 20
@@ -107,7 +107,7 @@ python tests/performance_test.py
 
 - **CLI**: Full-featured command-line interface (`main.py`)
 - **REST API**: FastAPI server with OpenAPI documentation (`api_server.py`)
-- **Desktop App**: Electron-based file manager with search capabilities
+- **Desktop App**: Electron-based File Searcher with search capabilities
 
 ## Key Technical Details
 
