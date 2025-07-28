@@ -68,7 +68,7 @@ export class LLMWrapper {
         stream: false
       })
 
-      const data = response as ChatCompletionResponse
+      const data = await response.json() as ChatCompletionResponse
       return data.choices[0]?.message?.content || ''
     } catch (error) {
       console.error('LLM chat error:', error)
@@ -81,99 +81,12 @@ export class LLMWrapper {
    */
   async streamChat(options: ChatCompletionOptions): Promise<ReadableStream<string>> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: options.model || 'gpt-4.1-mini',
-          messages: options.messages,
-          stream: true,
-          max_tokens: options.maxTokens,
-          temperature: options.temperature || 0.7
-        })
+      const response = await this.makeRequest({
+        ...options,
+        stream: true
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `HTTP ${response.status}`)
-      }
-
-      if (!response.body) {
-        throw new Error('No response body received')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-
-      return new ReadableStream<string>({
-        start(controller) {
-          let buffer = ''
-          
-          const processStream = async () => {
-            try {
-              while (true) {
-                const { done, value } = await reader.read()
-                
-                if (done) {
-                  // Process any remaining data in buffer
-                  if (buffer.trim()) {
-                    console.warn('Unprocessed data in buffer:', buffer)
-                  }
-                  controller.close()
-                  break
-                }
-
-                const chunk = decoder.decode(value, { stream: true })
-                buffer += chunk
-                
-                // Process complete lines
-                const lines = buffer.split('\n')
-                buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-                for (const line of lines) {
-                  const trimmedLine = line.trim()
-                  if (!trimmedLine) continue
-                  
-                  if (trimmedLine.startsWith('data: ')) {
-                    const data = trimmedLine.slice(6)
-                    
-                    if (data === '[DONE]') {
-                      controller.close()
-                      return
-                    }
-
-                    try {
-                      const parsed = JSON.parse(data) as StreamChunk
-                      const content = parsed.choices[0]?.delta?.content
-                      
-                      if (content) {
-                        console.log('[LLMWrapper] Enqueuing content chunk:', JSON.stringify(content))
-                        controller.enqueue(content)
-                      }
-                    } catch (parseError) {
-                      console.warn('Failed to parse stream chunk:', data, parseError)
-                    }
-                  }
-                }
-              }
-            } catch (error) {
-              console.error('[LLMWrapper] Stream processing error:', error)
-              controller.error(error)
-            } finally {
-              // Clean up the original reader
-              try {
-                reader.releaseLock()
-              } catch (e) {
-                console.warn('Error releasing original reader:', e)
-              }
-            }
-          }
-          
-          processStream()
-        }
-      })
+      return this.createStreamProcessor(response)
     } catch (error) {
       console.error('LLM stream chat error:', error)
       throw new Error(`LLM stream chat failed: ${error}`)
@@ -407,9 +320,89 @@ ${JSON.stringify(filesInfo, null, 2)}
   }
 
   /**
-   * Make HTTP request to LLM API
+   * Create stream processor for handling SSE responses
    */
-  private async makeRequest(options: ChatCompletionOptions): Promise<ChatCompletionResponse> {
+  private createStreamProcessor(response: Response): ReadableStream<string> {
+    if (!response.body) {
+      throw new Error('No response body received')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    return new ReadableStream<string>({
+      start(controller) {
+        let buffer = ''
+        
+        const processStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              
+              if (done) {
+                // Process any remaining data in buffer
+                if (buffer.trim()) {
+                  console.warn('Unprocessed data in buffer:', buffer)
+                }
+                controller.close()
+                break
+              }
+
+              const chunk = decoder.decode(value, { stream: true })
+              buffer += chunk
+              
+              // Process complete lines
+              const lines = buffer.split('\n')
+              buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+              for (const line of lines) {
+                const trimmedLine = line.trim()
+                if (!trimmedLine) continue
+                
+                if (trimmedLine.startsWith('data: ')) {
+                  const data = trimmedLine.slice(6)
+                  
+                  if (data === '[DONE]') {
+                    controller.close()
+                    return
+                  }
+
+                  try {
+                    const parsed = JSON.parse(data) as StreamChunk
+                    const content = parsed.choices[0]?.delta?.content
+                    
+                    if (content) {
+                      console.log('[LLMWrapper] Enqueuing content chunk:', JSON.stringify(content))
+                      controller.enqueue(content)
+                    }
+                  } catch (parseError) {
+                    console.warn('Failed to parse stream chunk:', data, parseError)
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('[LLMWrapper] Stream processing error:', error)
+            controller.error(error)
+          } finally {
+            // Clean up the original reader
+            try {
+              reader.releaseLock()
+            } catch (e) {
+              console.warn('Error releasing original reader:', e)
+            }
+          }
+        }
+        
+        processStream()
+      }
+    })
+  }
+
+  /**
+   * Make HTTP request to LLM API (unified for both streaming and non-streaming)
+   */
+  private async makeRequest(options: ChatCompletionOptions): Promise<Response> {
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -429,7 +422,7 @@ ${JSON.stringify(filesInfo, null, 2)}
       throw new Error(errorData.detail || `HTTP ${response.status}`)
     }
 
-    return response.json()
+    return response
   }
 }
 
