@@ -604,7 +604,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={() => onClose()}>
-      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col p-0 gap-0 [&>button]:hidden focus:outline-none focus-visible:outline-none">
+      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col p-0 gap-0 focus:outline-none focus-visible:outline-none">
         <DialogHeader className="px-2 py-3 border-b flex-shrink-0">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-3">

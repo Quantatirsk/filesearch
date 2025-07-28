@@ -113,8 +113,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({
       </div>
       
       <div className="flex items-center space-x-4">
-        <div className={`flex items-center space-x-1 ${isBackendRunning ? 'text-green-600' : 'text-red-600'}`}>
-          <div className={`w-2 h-2 rounded-full ${isBackendRunning ? 'bg-green-600' : 'bg-red-600'}`} />
+        <div className={`flex items-center space-x-1 ${isBackendRunning ? 'text-chart-2' : 'text-destructive'}`}>
+          <div className={`w-2 h-2 rounded-full ${isBackendRunning ? 'bg-chart-2' : 'bg-destructive'}`} />
           <span>{isBackendRunning ? '服务运行中' : '服务已停止'}</span>
         </div>
         

@@ -5,8 +5,9 @@ import { PythonBridge } from './python-bridge'
 import { FileOperations } from './file-operations'
 import { SettingsStore } from './settings-store'
 
-// 创建一个简单的icon路径，如果文件不存在会使用默认图标
-const iconPath = join(__dirname, '../../resources/icon.png')
+// 创建图标路径，使用新的搜索图标
+const iconPath = join(__dirname, '../../resources/icons/search-32.png')
+const trayIconPath = join(__dirname, '../../resources/icons/search-16.png')
 
 let mainWindow: BrowserWindow
 let searchWindow: BrowserWindow | null = null
@@ -412,13 +413,10 @@ function setupGlobalShortcuts(): void {
 
 // Create system tray
 function createTray(): void {
-  // Create tray icon
-  const trayIcon = nativeImage.createFromPath(iconPath)
+  // Create tray icon - use dedicated 16px icon for better quality
+  const trayIcon = nativeImage.createFromPath(trayIconPath)
   
-  // Resize icon for tray (16x16 for better display on different platforms)
-  const resizedIcon = trayIcon.resize({ width: 16, height: 16 })
-  
-  tray = new Tray(resizedIcon)
+  tray = new Tray(trayIcon)
   
   // Set tooltip
   tray.setToolTip('File Search - 文件搜索')

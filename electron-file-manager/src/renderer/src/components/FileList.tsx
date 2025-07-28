@@ -478,7 +478,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       
       {/* 类型列 */}
       <div className="px-1 py-0.5 flex items-center justify-center border-r border-border/20">
-        <span className="text-xs bg-secondary/50 px-1 py-0.5 rounded text-center">
+        <span className="text-xs border border-border px-1 py-0.5 rounded text-center bg-background">
           {file.file_type.toUpperCase()}
         </span>
       </div>
@@ -504,7 +504,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
       
       {/* 匹配度列 */}
       <div className="px-1 py-0.5 flex items-center justify-center border-r border-border/20">
-        <span className="text-xs bg-primary/10 text-primary px-1 py-0.5 rounded">
+        <span className="text-xs bg-primary/10 text-primary border border-primary/20 px-1 py-0.5 rounded">
           {file.match_score ? Math.round(file.match_score) : 100}%
         </span>
       </div>
@@ -597,7 +597,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               onClick={() => handleDeleteClick(filePath)}
-              className="text-red-600"
+              className="text-destructive"
             >
               <Trash2 className="mr-2 h-4 w-4" />
               删除
@@ -849,7 +849,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                     <span className="text-lg font-semibold flex-shrink-0">AI速览</span>
                     {summaryFilePath && (
                       <div className="flex items-center gap-1 min-w-0 flex-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0"></div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-chart-2 flex-shrink-0"></div>
                         <span className="text-base font-medium text-foreground truncate">
                           {summaryFilePath.split('/').pop()}
                         </span>
@@ -1014,7 +1014,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
             </button>
             
             <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground text-red-600 hover:text-red-600 flex items-center"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground text-destructive hover:text-destructive flex items-center"
               onClick={() => {
                 handleDeleteClick(contextMenuFilePath)
                 handleContextMenuClose()

@@ -90,7 +90,7 @@ export const Sidebar: React.FC = () => {
               </span>
               <div className="flex items-center space-x-2">
                 <span className="text-muted-foreground">{count}</span>
-                <div className="w-16 bg-secondary rounded-full h-2">
+                <div className="w-16 bg-muted rounded-full h-2">
                   <div 
                     className="bg-primary h-2 rounded-full" 
                     style={{ width: `${(count / totalFiles) * 100}%` }}
@@ -106,9 +106,9 @@ export const Sidebar: React.FC = () => {
       <div className="p-4 border-t border-border">
         <h3 className="text-sm font-semibold mb-3">快速操作</h3>
         <Button
-          variant="destructive"
+          variant="secondary"
           size="sm"
-          className="w-full justify-start"
+          className="w-full justify-start border border-border hover:bg-muted"
           onClick={handleClearIndex}
           disabled={!isBackendRunning || isClearing}
         >

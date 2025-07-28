@@ -400,30 +400,30 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       <DialogTrigger asChild>
         {children}
       </DialogTrigger>
-      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col overflow-hidden">
+      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col overflow-hidden [&>button]:hidden">
         <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="flex-shrink-0 grid w-full grid-cols-6 mb-4">
-            <TabsTrigger value="overview" className="flex items-center gap-2">
+          <TabsList className="flex-shrink-0 grid w-full grid-cols-6 mb-4 bg-muted/50 border border-border">
+            <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <PieChart className="h-4 w-4" />
               概览
             </TabsTrigger>
-            <TabsTrigger value="search" className="flex items-center gap-2">
+            <TabsTrigger value="search" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Search className="h-4 w-4" />
               搜索
             </TabsTrigger>
-            <TabsTrigger value="display" className="flex items-center gap-2">
+            <TabsTrigger value="display" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Monitor className="h-4 w-4" />
               显示
             </TabsTrigger>
-            <TabsTrigger value="files" className="flex items-center gap-2">
+            <TabsTrigger value="files" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <FileText className="h-4 w-4" />
               文件
             </TabsTrigger>
-            <TabsTrigger value="server" className="flex items-center gap-2">
+            <TabsTrigger value="server" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Server className="h-4 w-4" />
               服务
             </TabsTrigger>
-            <TabsTrigger value="advanced" className="flex items-center gap-2">
+            <TabsTrigger value="advanced" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Zap className="h-4 w-4" />
               高级
             </TabsTrigger>
@@ -468,9 +468,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Button
-                    variant="destructive"
+                    variant="secondary"
                     size="sm"
-                    className="w-full justify-start"
+                    className="w-full justify-start border border-border hover:bg-secondary/80"
                     onClick={handleClearIndex}
                     disabled={!isBackendRunning || isClearing}
                   >
@@ -516,7 +516,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                           </span>
                           <div className="flex items-center space-x-3">
                             <Badge variant="secondary">{count}</Badge>
-                            <div className="w-20 bg-secondary rounded-full h-2">
+                            <div className="w-20 bg-muted rounded-full h-2">
                               <div 
                                 className="bg-primary h-2 rounded-full" 
                                 style={{ width: `${(count / totalFiles) * 100}%` }}
@@ -726,7 +726,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                   </Button>
                   <div className="ml-auto flex gap-2">
                     {isAllFormatsSelected() && (
-                      <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                      <Badge variant="default" className="bg-chart-2/10 text-chart-2 border-chart-2/20">
                         所有格式
                       </Badge>
                     )}

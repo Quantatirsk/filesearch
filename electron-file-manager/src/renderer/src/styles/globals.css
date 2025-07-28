@@ -5,47 +5,98 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --foreground: 220.9091 39.2857% 10.9804%;
+    --card: 210 20.0000% 98.0392%;
+    --card-foreground: 220.9091 39.2857% 10.9804%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 220.9091 39.2857% 10.9804%;
+    --primary: 208.2558 100% 33.7255%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 208.0645 34.8315% 34.9020%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 220.0000 14.2857% 95.8824%;
+    --muted-foreground: 220 8.9362% 46.0784%;
+    --accent: 220.0000 14.2857% 95.8824%;
+    --accent-foreground: 220.9091 39.2857% 10.9804%;
+    --destructive: 356.3033 90.5579% 54.3137%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13.0435% 90.9804%;
+    --input: 220.0000 14.2857% 95.8824%;
+    --ring: 202.8169 89.1213% 53.1373%;
+    --chart-1: 203.8863 88.2845% 53.1373%;
+    --chart-2: 159.7826 100% 36.0784%;
+    --chart-3: 42.0290 92.8251% 56.2745%;
+    --chart-4: 147.1429 78.5047% 41.9608%;
+    --chart-5: 341.4894 75.2000% 50.9804%;
+    --sidebar: 210 20.0000% 98.0392%;
+    --sidebar-foreground: 220.9091 39.2857% 10.9804%;
+    --sidebar-primary: 203.8863 88.2845% 53.1373%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220.0000 14.2857% 95.8824%;
+    --sidebar-accent-foreground: 220.9091 39.2857% 10.9804%;
+    --sidebar-border: 220 13.0435% 90.9804%;
+    --sidebar-ring: 202.8169 89.1213% 53.1373%;
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --radius: 0.4rem;
+    --shadow-2xs: 0px 2px 8px -1px hsl(0 0% 0% / 0.03);
+    --shadow-xs: 0px 2px 8px -1px hsl(0 0% 0% / 0.03);
+    --shadow-sm: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 1px 2px -2px hsl(0 0% 0% / 0.05);
+    --shadow: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 1px 2px -2px hsl(0 0% 0% / 0.05);
+    --shadow-md: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 2px 4px -2px hsl(0 0% 0% / 0.05);
+    --shadow-lg: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 4px 6px -2px hsl(0 0% 0% / 0.05);
+    --shadow-xl: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 8px 10px -2px hsl(0 0% 0% / 0.05);
+    --shadow-2xl: 0px 2px 8px -1px hsl(0 0% 0% / 0.13);
+    --tracking-normal: -0.01em;
+    --spacing: 0.25rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 224 71.4286% 4.1176%;
+    --foreground: 210 20.0000% 98.0392%;
+    --card: 221.2500 42.1053% 7.4510%;
+    --card-foreground: 210 20.0000% 98.0392%;
+    --popover: 224 71.4286% 4.1176%;
+    --popover-foreground: 210 20.0000% 98.0392%;
+    --primary: 203.7736 87.6033% 52.5490%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 195.0000 15.3846% 94.9020%;
+    --secondary-foreground: 207.6923 25.4902% 10%;
+    --muted: 220.9091 39.2857% 10.9804%;
+    --muted-foreground: 217.8947 10.6145% 64.9020%;
+    --accent: 215.0000 27.9070% 16.8627%;
+    --accent-foreground: 220 13.0435% 90.9804%;
+    --destructive: 356.3033 90.5579% 54.3137%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215.0000 27.9070% 16.8627%;
+    --input: 220.9091 39.2857% 10.9804%;
+    --ring: 202.8169 89.1213% 53.1373%;
+    --chart-1: 203.7736 87.6033% 52.5490%;
+    --chart-2: 159.7826 100% 36.0784%;
+    --chart-3: 42.0290 92.8251% 56.2745%;
+    --chart-4: 147.1429 78.5047% 41.9608%;
+    --chart-5: 341.4894 75.2000% 50.9804%;
+    --sidebar: 221.2500 42.1053% 7.4510%;
+    --sidebar-foreground: 210 20.0000% 98.0392%;
+    --sidebar-primary: 202.8169 89.1213% 53.1373%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215.0000 27.9070% 16.8627%;
+    --sidebar-accent-foreground: 220 13.0435% 90.9804%;
+    --sidebar-border: 215.0000 27.9070% 16.8627%;
+    --sidebar-ring: 202.8169 89.1213% 53.1373%;
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    --font-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --radius: 0.4rem;
+    --shadow-2xs: 0px 2px 8px -1px hsl(0 0% 0% / 0.03);
+    --shadow-xs: 0px 2px 8px -1px hsl(0 0% 0% / 0.03);
+    --shadow-sm: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 1px 2px -2px hsl(0 0% 0% / 0.05);
+    --shadow: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 1px 2px -2px hsl(0 0% 0% / 0.05);
+    --shadow-md: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 2px 4px -2px hsl(0 0% 0% / 0.05);
+    --shadow-lg: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 4px 6px -2px hsl(0 0% 0% / 0.05);
+    --shadow-xl: 0px 2px 8px -1px hsl(0 0% 0% / 0.05), 0px 8px 10px -2px hsl(0 0% 0% / 0.05);
+    --shadow-2xl: 0px 2px 8px -1px hsl(0 0% 0% / 0.13);
   }
 }
 
@@ -55,6 +106,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
   }
 }
 
@@ -65,7 +117,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-secondary/50;
+  @apply bg-muted/30;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -77,7 +129,7 @@
 }
 
 ::-webkit-scrollbar-corner {
-  @apply bg-secondary/50;
+  @apply bg-muted/30;
 }
 
 /* Utility class to hide scrollbars */

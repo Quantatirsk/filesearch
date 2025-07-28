@@ -170,7 +170,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
         WebkitBackdropFilter: 'blur(40px) saturate(180%)'
       }}
     >
-      <Search className="text-gray-500 dark:text-gray-300 flex-shrink-0" size={18} />
+      <Search className="text-muted-foreground flex-shrink-0" size={18} />
       
       <input
         ref={inputRef}
@@ -183,7 +183,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         disabled={!isBackendRunning}
-        className="flex-1 h-full px-3 bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 text-sm font-medium"
+        className="flex-1 h-full px-3 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground placeholder:font-normal text-sm font-medium"
       />
 
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -192,7 +192,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
             onClick={clearSearch}
             className="p-1.5 rounded-full hover:bg-white/20 dark:hover:bg-white/10 transition-colors"
           >
-            <X size={16} className="text-gray-500 dark:text-gray-300" />
+            <X size={16} className="text-muted-foreground" />
           </button>
         )}
         
@@ -216,14 +216,14 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({ isVisible, onClose
           >
             <div className="flex items-center gap-1.5 h-full">
               {isBackendRunning && (
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                <span className="text-xs font-normal text-muted-foreground">
                   tab
                 </span>
               )}
               <span className={`text-xs font-medium whitespace-nowrap transition-colors duration-300 ${
                 isFocused
-                  ? 'text-gray-900 dark:text-white'
-                  : 'text-gray-800 dark:text-gray-100'
+                  ? 'text-foreground'
+                  : 'text-foreground/80'
               }`}>
                 {searchModes.find(mode => mode.value === selectedMode)?.label}
               </span>

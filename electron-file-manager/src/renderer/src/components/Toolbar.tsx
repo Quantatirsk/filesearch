@@ -85,7 +85,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center space-x-1 mx-4">
         {/* Directory operations */}
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
           onClick={onSelectDirectory}
           disabled={!isBackendRunning}
@@ -150,7 +150,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center space-x-1 flex-shrink-0">
         {/* Smart Assistant */}
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
           onClick={onOpenChatAssistant}
           disabled={!isBackendRunning}
@@ -162,7 +162,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
         {/* Settings */}
         <SettingsDialog>
-          <Button variant="outline" size="sm" className="h-7 px-2">
+          <Button variant="ghost" size="sm" className="h-7 px-2">
             <Settings className="h-3 w-3" />
           </Button>
         </SettingsDialog>

@@ -1,10 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Lottie from 'lottie-react';
+
+// Import animation files directly as modules for better bundling
+import randomLoaderAnimation from '../assets/randomLoader.json';
+import loaderAnimation from '../assets/loader.json';
+import failedAnimation from '../assets/failed.json';
+import magicLoaderAnimation from '../assets/magicLoader.json';
+
+// Animation type mapping
+const ANIMATIONS = {
+  '/randomLoader.json': randomLoaderAnimation,
+  '/loader.json': loaderAnimation,
+  '/failed.json': failedAnimation,
+  '/magicLoader.json': magicLoaderAnimation,
+} as const;
 
 interface LottieLoaderProps {
   size?: number;
   className?: string;
-  animationPath?: string;
+  animationPath?: keyof typeof ANIMATIONS;
 }
 
 export const LottieLoader: React.FC<LottieLoaderProps> = ({ 
@@ -12,44 +26,10 @@ export const LottieLoader: React.FC<LottieLoaderProps> = ({
   className = "", 
   animationPath = "/randomLoader.json" 
 }) => {
-  const [animationData, setAnimationData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Get animation data directly from imports
+  const animationData = ANIMATIONS[animationPath] || randomLoaderAnimation;
   
-  useEffect(() => {
-    const loadAnimation = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch(animationPath);
-        if (!response.ok) {
-          throw new Error(`Failed to load animation: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        setAnimationData(data);
-      } catch (error) {
-        console.error('Error loading Lottie animation:', error);
-        setAnimationData(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    loadAnimation();
-  }, [animationPath]);
-  
-  // Show loading spinner while fetching animation data
-  if (isLoading) {
-    return (
-      <div 
-        className={`flex items-center justify-center ${className}`}
-        style={{ width: size, height: size }}
-      >
-        <div className="animate-spin rounded-full border-2 border-primary border-t-transparent"
-             style={{ width: size * 0.6, height: size * 0.6 }} />
-      </div>
-    );
-  }
-  
-  // Fallback to CSS spinner if animation data failed to load
+  // Fallback to CSS spinner if animation data is not available
   if (!animationData) {
     return (
       <div 
