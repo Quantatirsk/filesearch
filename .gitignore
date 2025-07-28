@@ -25,6 +25,8 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+# But keep our backend spec file
+!filesearch-backend.spec
 
 # Installer logs
 pip-log.txt
