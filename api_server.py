@@ -158,11 +158,13 @@ class ChatMessage(BaseModel):
     content: str = Field(..., description="Message content")
 
 class ChatCompletionRequest(BaseModel):
-    model: str = Field(default="gpt-4.1-mini", description="Model name")
+    model: Optional[str] = Field(default=None, description="Model name")
     messages: List[ChatMessage] = Field(..., description="List of messages")
     stream: bool = Field(default=False, description="Whether to stream the response")
     max_tokens: Optional[int] = Field(default=None, description="Maximum number of tokens")
     temperature: float = Field(default=0.7, description="Sampling temperature")
+    api_key: Optional[str] = Field(default=None, description="OpenAI API key override")
+    base_url: Optional[str] = Field(default=None, description="OpenAI base URL override")
 
 class ChatCompletionChoice(BaseModel):
     index: int
@@ -232,6 +234,7 @@ load_dotenv()
 
 # Initialize OpenAI client
 openai_client = None
+default_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 try:
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
@@ -243,6 +246,7 @@ try:
         )
         if os.getenv('DEBUG'):
             print(f"✅ OpenAI client initialized with base URL: {openai_base_url}")
+            print(f"✅ Default model: {default_model}")
     else:
         print("⚠️  OpenAI API key not found in environment variables")
 except Exception as e:
@@ -1209,6 +1213,102 @@ async def update_file_path(
         )
 
 
+class ModelsRequest(BaseModel):
+    api_key: Optional[str] = Field(None, description="OpenAI API key")
+    base_url: Optional[str] = Field(None, description="OpenAI base URL")
+
+
+@app.post("/v1/models")
+async def get_available_models(request: ModelsRequest = None):
+    """
+    Get available LLM models from the OpenAI API
+    
+    Supports custom API key and base URL for testing different configurations.
+    Returns a list of available models that can be used for chat completions.
+    """
+    try:
+        # Determine which client to use
+        client_to_use = openai_client
+        
+        # If custom API key or base URL provided, create a temporary client
+        if request and (request.api_key or request.base_url):
+            api_key = request.api_key or os.getenv("OPENAI_API_KEY")
+            base_url = request.base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            
+            if not api_key:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="API key is required when using custom configuration"
+                )
+            
+            client_to_use = openai.OpenAI(
+                api_key=api_key,
+                base_url=base_url
+            )
+            print(f"[API] Using custom client for models - API Key: {api_key[:10]}..., Base URL: {base_url}")
+        elif not openai_client:
+            raise HTTPException(
+                status_code=503, 
+                detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables or provide custom credentials."
+            )
+        else:
+            print(f"[API] Using global client for models")
+        
+        # Get models from OpenAI API
+        models_response = client_to_use.models.list()
+        
+        # Format response to match OpenAI models API format
+        models_list = []
+        for model in models_response.data:
+            models_list.append({
+                "id": model.id,
+                "object": "model",
+                "created": getattr(model, 'created', int(time.time())),
+                "owned_by": getattr(model, 'owned_by', 'openai'),
+                "permission": [],
+                "root": model.id,
+                "parent": None
+            })
+        
+        # Sort models by ID for consistent ordering
+        models_list.sort(key=lambda x: x['id'])
+        
+        return {
+            "object": "list",
+            "data": models_list
+        }
+        
+    except Exception as e:
+        # If API call fails, return common models as fallback
+        print(f"Failed to get models from API: {e}")
+        fallback_models = [
+            "gpt-4",
+            "gpt-4-turbo",
+            "gpt-4.1-mini", 
+            "gpt-3.5-turbo",
+            "gpt-3.5-turbo-16k"
+        ]
+        
+        models_list = []
+        for model_id in fallback_models:
+            models_list.append({
+                "id": model_id,
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "openai",
+                "permission": [],
+                "root": model_id,
+                "parent": None
+            })
+        
+        return {
+            "object": "list",
+            "data": models_list
+        }
+
+
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
@@ -1217,19 +1317,45 @@ async def chat_completions(request: ChatCompletionRequest):
     Supports both streaming and non-streaming responses.
     All prompts should be packaged in the frontend and call this unified endpoint.
     """
-    if not openai_client:
-        raise HTTPException(
-            status_code=503, 
-            detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables."
-        )
-    
     try:
         # Convert Pydantic models to OpenAI format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
         
+        # Determine which model to use
+        model_to_use = request.model if request.model else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        
+        # Determine which client to use
+        client_to_use = openai_client
+        
+        # If custom API key or base URL provided, create a temporary client
+        if request.api_key or request.base_url:
+            api_key = request.api_key or os.getenv("OPENAI_API_KEY")
+            base_url = request.base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+            
+            if not api_key:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="API key is required when using custom configuration"
+                )
+            
+            client_to_use = openai.OpenAI(
+                api_key=api_key,
+                base_url=base_url
+            )
+            print(f"[API] Using custom client - API Key: {api_key[:10]}..., Base URL: {base_url}")
+        elif not openai_client:
+            raise HTTPException(
+                status_code=503, 
+                detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables or provide custom credentials."
+            )
+        else:
+            print(f"[API] Using global client")
+        
+        print(f"[API] Using model: {model_to_use} (requested: {request.model}, default: {os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')})")
+        
         # Call OpenAI API
-        completion = openai_client.chat.completions.create(
-            model=request.model,
+        completion = client_to_use.chat.completions.create(
+            model=model_to_use,
             messages=messages,
             stream=request.stream,
             max_tokens=request.max_tokens,

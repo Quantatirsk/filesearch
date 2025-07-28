@@ -38,6 +38,10 @@ export interface UpdateFilePathResponse {
 
 export const useApi = () => {
   const settings = useAppStore(state => state.settings)
+  
+  // Debug: Log current LLM model whenever useApi is called
+  console.log('[useApi] Current LLM model from settings:', settings.llmModel)
+  
   const makeRequest = useCallback(async (options: unknown) => {
     try {
       return await window.electronAPI.api.request(options)
@@ -204,7 +208,7 @@ export const useApi = () => {
   }> => {
     try {
       // 1. Extract keyword combinations using LLM
-      const keywordSets = await llmWrapper.extractKeywords(query)
+      const keywordSets = await llmWrapper.extractKeywords(query, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl)
       
       // 2. Search with multiple keyword combinations in parallel using quick search (exact + path)
       const searchPromises = keywordSets.map(async keywords => {
@@ -272,7 +276,7 @@ export const useApi = () => {
       const uniqueFiles = Array.from(allFiles.values())
       
       // 4. Use LLM to analyze relevance and provide recommendations
-      const recommendation = await llmWrapper.analyzeRelevance(query, uniqueFiles)
+      const recommendation = await llmWrapper.analyzeRelevance(query, uniqueFiles, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl)
       
       // Convert recommended files to FileItem format
       const convertedFiles: FileItem[] = recommendation.recommendedFiles.map(file => ({
@@ -294,7 +298,7 @@ export const useApi = () => {
       console.error('Failed to chat with assistant:', error)
       throw error
     }
-  }, [search])
+  }, [search, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl])
 
   // Streaming version of summarizeFileContent
   const streamSummarizeFileContent = useCallback(async (filePath: string): Promise<ReadableStream<string>> => {
@@ -307,14 +311,14 @@ export const useApi = () => {
       }
 
       // 2. Use LLM to summarize the content with streaming
-      const stream = await llmWrapper.streamSummarizeFile(fileContentResponse.content)
+      const stream = await llmWrapper.streamSummarizeFile(fileContentResponse.content, 10000, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl)
       
       return stream
     } catch (error) {
       console.error('Failed to summarize file content:', error)
       throw error
     }
-  }, [getFileContent])
+  }, [getFileContent, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl])
 
   const intelligentFileSearch = useCallback(async (query: string): Promise<{
     files: FileItem[]
@@ -327,7 +331,7 @@ export const useApi = () => {
     try {
       // 1. Extract keyword combinations using LLM
       console.log('Extracting keywords for query:', query)
-      const keywordGroups = await llmWrapper.extractKeywords(query)
+      const keywordGroups = await llmWrapper.extractKeywords(query, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl)
       console.log('Extracted keyword groups:', keywordGroups)
 
       // 2. Perform exact searches with complete keyword combinations only
@@ -449,7 +453,7 @@ export const useApi = () => {
       console.error('Failed to perform intelligent file search:', error)
       throw error
     }
-  }, [search])
+  }, [search, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl])
 
   const streamChatWithAssistant = useCallback(async (query: string, onProgress?: (message: string) => void): Promise<{
     stream: ReadableStream<string>
@@ -464,7 +468,12 @@ export const useApi = () => {
           onProgress?.('📝 分析用户查询语义...\n')
           
           // Extract keywords with progress
-          const keywordGroups = await llmWrapper.extractKeywords(query)
+          console.log('[useApi] About to call extractKeywords with:', {
+            model: settings.llmModel,
+            hasApiKey: !!settings.llmApiKey,
+            baseUrl: settings.llmBaseUrl
+          })
+          const keywordGroups = await llmWrapper.extractKeywords(query, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl)
           onProgress?.(`💡 提取到 ${keywordGroups.length} 个关键词组合\n`)
           keywordGroups.forEach((group, idx) => {
             onProgress?.(`  ${idx + 1}. ${group.join(' + ')}\n`)
@@ -649,7 +658,7 @@ export const useApi = () => {
       console.error('Failed to stream chat with assistant:', error)
       throw error
     }
-  }, [intelligentFileSearch])
+  }, [intelligentFileSearch, settings.llmModel, settings.llmApiKey, settings.llmBaseUrl])
 
   return {
     search,

@@ -618,17 +618,28 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 </span>
               </div>
             </div>
-            {messages.length > 0 && (
+            <div className="flex items-center gap-2">
+              {messages.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearChat}
+                  title="清空对话"
+                  className="h-7 w-7 p-0"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearChat}
-                title="清空对话"
+                onClick={onClose}
+                title="关闭对话"
                 className="h-7 w-7 p-0"
               >
-                <Trash2 className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </Button>
-            )}
+            </div>
           </DialogTitle>
         </DialogHeader>
 

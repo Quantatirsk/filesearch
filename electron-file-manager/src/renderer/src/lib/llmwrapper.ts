@@ -17,6 +17,8 @@ export interface ChatCompletionOptions {
   maxTokens?: number
   temperature?: number
   model?: string
+  apiKey?: string
+  baseUrl?: string
 }
 
 export interface ChatCompletionResponse {
@@ -48,6 +50,21 @@ export interface StreamChunk {
     }
     finish_reason?: string
   }>
+}
+
+export interface ModelInfo {
+  id: string
+  object: string
+  created: number
+  owned_by: string
+  permission: unknown[]
+  root: string
+  parent: string | null
+}
+
+export interface ModelsResponse {
+  object: string
+  data: ModelInfo[]
 }
 
 export class LLMWrapper {
@@ -96,7 +113,7 @@ export class LLMWrapper {
   /**
    * Summarize file content (streaming)
    */
-  async streamSummarizeFile(content: string, maxLength: number = 10000): Promise<ReadableStream<string>> {
+  async streamSummarizeFile(content: string, maxLength = 10000, model?: string, apiKey?: string, baseUrl?: string): Promise<ReadableStream<string>> {
     // Truncate content if too long
     const truncatedContent = this.truncateContent(content, maxLength)
     
@@ -115,7 +132,10 @@ export class LLMWrapper {
     const stream = await this.streamChat({
       messages,
       temperature: 0.3,
-      maxTokens: 2000
+      maxTokens: 2000,
+      model,
+      apiKey,
+      baseUrl
     })
     console.log('Stream created successfully')
     return stream
@@ -124,7 +144,7 @@ export class LLMWrapper {
   /**
    * Extract keywords from user query (non-streaming)
    */
-  async extractKeywords(query: string): Promise<string[][]> {
+  async extractKeywords(query: string, model?: string, apiKey?: string, baseUrl?: string): Promise<string[][]> {
     const messages: ChatMessage[] = [
       {
         role: 'system',
@@ -165,7 +185,10 @@ export class LLMWrapper {
       const response = await this.chat({
         messages,
         temperature: 0.3,
-        maxTokens: 400
+        maxTokens: 400,
+        model,
+        apiKey,
+        baseUrl
       })
 
       // Clean and parse JSON response
@@ -208,7 +231,7 @@ export class LLMWrapper {
   /**
    * Analyze file relevance and provide recommendations (non-streaming)
    */
-  async analyzeRelevance(userQuery: string, files: Array<{ file_path: string; file_name: string; file_type?: string; content_preview?: string; match_score?: number }>): Promise<{
+  async analyzeRelevance(userQuery: string, files: Array<{ file_path: string; file_name: string; file_type?: string; content_preview?: string; match_score?: number }>, model?: string, apiKey?: string, baseUrl?: string): Promise<{
     reasoning: string
     recommendedFiles: Array<{ file_path: string; file_name: string; file_type?: string; content_preview?: string; match_score?: number }>
   }> {
@@ -259,7 +282,10 @@ ${JSON.stringify(filesInfo, null, 2)}
       const response = await this.chat({
         messages,
         temperature: 0.3,
-        maxTokens: 600
+        maxTokens: 600,
+        model,
+        apiKey,
+        baseUrl
       })
 
       // Clean and parse JSON response
@@ -400,21 +426,88 @@ ${JSON.stringify(filesInfo, null, 2)}
   }
 
   /**
+   * Get available models from the API
+   */
+  async getModels(apiKey?: string, baseUrl?: string): Promise<ModelInfo[]> {
+    try {
+      // Build request body, only include credentials if provided
+      const requestBody: any = {}
+      
+      if (apiKey) {
+        requestBody.api_key = apiKey
+      }
+      
+      if (baseUrl) {
+        requestBody.base_url = baseUrl
+      }
+      
+      console.log('[LLMWrapper] Getting models with:', {
+        hasApiKey: !!apiKey,
+        baseUrl: baseUrl || 'backend default'
+      })
+
+      const response = await fetch(`${this.baseUrl}/v1/models`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json() as ModelsResponse
+      return data.data || []
+    } catch (error) {
+      console.error('Failed to get models:', error)
+      // Return fallback models if API call fails
+      return [
+        { id: 'gpt-4.1-nano', object: 'model', created: Date.now(), owned_by: 'openai', permission: [] as unknown[], root: 'gpt-4.1-nano', parent: null },
+        { id: 'gpt-4.1-mini', object: 'model', created: Date.now(), owned_by: 'openai', permission: [] as unknown[], root: 'gpt-4.1-mini', parent: null }
+      ]
+    }
+  }
+
+  /**
    * Make HTTP request to LLM API (unified for both streaming and non-streaming)
    */
   private async makeRequest(options: ChatCompletionOptions): Promise<Response> {
+    // Build request body, only include model if explicitly provided
+    const requestBody: any = {
+      messages: options.messages,
+      stream: options.stream || false,
+      max_tokens: options.maxTokens,
+      temperature: options.temperature || 0.7
+    }
+    
+    // Only include optional fields if they're explicitly provided
+    if (options.model) {
+      requestBody.model = options.model
+    }
+    
+    if (options.apiKey) {
+      requestBody.api_key = options.apiKey
+    }
+    
+    if (options.baseUrl) {
+      requestBody.base_url = options.baseUrl
+    }
+    
+    console.log('[LLMWrapper] Sending request with:', {
+      model: options.model || 'backend default',
+      hasApiKey: !!options.apiKey,
+      baseUrl: options.baseUrl || 'backend default'
+    })
+    
     const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: options.model || 'gpt-4.1-mini',
-        messages: options.messages,
-        stream: options.stream || false,
-        max_tokens: options.maxTokens,
-        temperature: options.temperature || 0.7
-      })
+      body: JSON.stringify(requestBody)
     })
 
     if (!response.ok) {

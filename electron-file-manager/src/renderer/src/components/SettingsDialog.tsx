@@ -31,13 +31,15 @@ import {
   Database,
   BarChart3,
   Trash2,
-  PieChart
+  PieChart,
+  Brain
 } from 'lucide-react'
 
 import { useApi } from '../hooks/useApi'
 import { useAppStore } from '../stores/app-store'
 import { formatFileSize } from '../lib/utils'
 import { toast } from 'sonner'
+import { llmWrapper, type ModelInfo } from '../lib/llmwrapper'
 
 interface SettingsData {
   // 搜索设置
@@ -68,6 +70,11 @@ interface SettingsData {
   indexingBatchSize: number
   maxFileSize: number
   enableChineseTokenizer: boolean
+  
+  // LLM设置
+  llmApiKey: string
+  llmBaseUrl: string
+  llmModel: string
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
@@ -103,7 +110,12 @@ const DEFAULT_SETTINGS: SettingsData = {
   
   indexingBatchSize: 1000,
   maxFileSize: 100, // MB
-  enableChineseTokenizer: true
+  enableChineseTokenizer: true,
+  
+  // LLM设置默认值
+  llmApiKey: '',
+  llmBaseUrl: 'https://api.openai.com/v1',
+  llmModel: 'gpt-4.1-mini'
 }
 
 interface SettingsDialogProps {
@@ -119,6 +131,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
   const [localSettings, setLocalSettings] = useState<SettingsData>(DEFAULT_SETTINGS)
   const [isOpen, setIsOpen] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
+  const [availableModels, setAvailableModels] = useState<ModelInfo[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
   const { clearIndex, getStats } = useApi()
 
   // 同步设置数据
@@ -381,6 +395,88 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     }
   }, [isBackendRunning, clearIndex, getStats, setStats, setSearchResults])
 
+  // 加载可用模型
+  const loadAvailableModels = useCallback(async () => {
+    if (!isBackendRunning) return
+    
+    setIsLoadingModels(true)
+    try {
+      let models: ModelInfo[] = []
+      
+      // 如果用户配置了自定义的 API Key 和 Base URL，使用测试端点
+      if (localSettings.llmApiKey && localSettings.llmBaseUrl) {
+        console.log('Testing models with custom config:', {
+          baseUrl: localSettings.llmBaseUrl,
+          hasApiKey: !!localSettings.llmApiKey
+        })
+        
+        // 使用统一的getModels方法，传递自定义配置
+        models = await llmWrapper.getModels(localSettings.llmApiKey, localSettings.llmBaseUrl)
+        console.log('Successfully loaded models with config:', models.length)
+      } else {
+        // 使用全局配置
+        console.log('Using global backend config for models')
+        models = await llmWrapper.getModels()
+      }
+      
+      setAvailableModels(models)
+      
+      // 智能模型选择逻辑：如果当前选择的模型不在获取到的模型列表中，自动选择合适的模型
+      if (models.length > 0) {
+        const currentModel = localSettings.llmModel
+        const isCurrentModelAvailable = models.some(model => model.id === currentModel)
+        
+        if (!isCurrentModelAvailable) {
+          // 优先查找 gpt-4.1-mini
+          const preferredModel = models.find(model => model.id === 'gpt-4.1-mini')
+          const selectedModel = preferredModel ? preferredModel.id : models[0].id
+          
+          console.log(`Current model "${currentModel}" not available, switching to "${selectedModel}"`)
+          updateSetting('llmModel', selectedModel)
+          toast.info(`已自动选择模型：${selectedModel}`)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error)
+      // 设置一些默认模型作为fallback
+      setAvailableModels([
+        { id: 'gpt-4.1-nano', object: 'model', created: Date.now(), owned_by: 'openai', permission: [], root: 'gpt-4.1-nano', parent: null },
+        { id: 'gpt-4.1-mini', object: 'model', created: Date.now(), owned_by: 'openai', permission: [], root: 'gpt-4.1-mini', parent: null }
+      ])
+      toast.error('加载模型列表失败，请检查API配置')
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }, [isBackendRunning, localSettings.llmApiKey, localSettings.llmBaseUrl])
+
+  // 当对话框打开且后端运行时加载模型
+  useEffect(() => {
+    if (isOpen && isBackendRunning) {
+      loadAvailableModels()
+    }
+  }, [isOpen, isBackendRunning, loadAvailableModels])
+
+  // 当模型列表变化时，检查当前选择的模型是否有效
+  useEffect(() => {
+    if (availableModels.length > 0) {
+      const currentModel = localSettings.llmModel
+      const isCurrentModelValid = currentModel && availableModels.some(model => model.id === currentModel)
+      
+      // 如果当前模型为空或不在可用列表中，自动选择一个有效的模型
+      if (!isCurrentModelValid) {
+        const preferredModel = availableModels.find(model => model.id === 'gpt-4.1-mini')
+        const selectedModel = preferredModel ? preferredModel.id : availableModels[0].id
+        
+        if (!currentModel) {
+          console.log(`No model selected, auto-selecting "${selectedModel}"`)
+        } else {
+          console.log(`Invalid model "${currentModel}", auto-selecting "${selectedModel}"`)
+        }
+        updateSetting('llmModel', selectedModel)
+      }
+    }
+  }, [availableModels, localSettings.llmModel, updateSetting])
+
   // 获取图标组件
   const getIconComponent = (iconName: string) => {
     const icons: { [key: string]: React.ComponentType<{ className?: string; size?: number | string }> } = {
@@ -402,7 +498,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
       </DialogTrigger>
       <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col overflow-hidden [&>button]:hidden">
         <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="flex-shrink-0 grid w-full grid-cols-6 mb-4 bg-muted/50 border border-border">
+          <TabsList className="flex-shrink-0 grid w-full grid-cols-7 mb-4 bg-muted/50 border border-border">
             <TabsTrigger value="overview" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <PieChart className="h-4 w-4" />
               概览
@@ -426,6 +522,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
             <TabsTrigger value="advanced" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Zap className="h-4 w-4" />
               高级
+            </TabsTrigger>
+            <TabsTrigger value="llm" className="flex items-center gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              <Brain className="h-4 w-4" />
+              LLM
             </TabsTrigger>
           </TabsList>
 
@@ -911,6 +1011,209 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     onCheckedChange={(checked) => updateSetting('enableChineseTokenizer', checked)}
                   />
                   <Label>启用中文分词器</Label>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* LLM设置 */}
+          <TabsContent value="llm" className="flex-1 overflow-y-auto space-y-4 pb-4" style={{height: 0}}>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="h-4 w-4" />
+                  LLM 配置
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>API Key</Label>
+                    <Input 
+                      type="password"
+                      value={localSettings.llmApiKey}
+                      onChange={(e) => updateSetting('llmApiKey', e.target.value)}
+                      placeholder="请输入您的 OpenAI API Key"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      您的 API Key 将安全存储在本地，不会上传到服务器
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>API Base URL</Label>
+                    <Input 
+                      type="url"
+                      value={localSettings.llmBaseUrl}
+                      onChange={(e) => updateSetting('llmBaseUrl', e.target.value)}
+                      placeholder="https://api.openai.com/v1"
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      支持 OpenAI 兼容的 API 服务，如 Azure OpenAI、本地 LLM 服务等
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>模型</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadAvailableModels}
+                        disabled={!isBackendRunning || isLoadingModels}
+                        className="h-6 px-2 text-xs"
+                      >
+                        {isLoadingModels ? '加载中...' : '刷新'}
+                      </Button>
+                    </div>
+                    <Select 
+                      value={localSettings.llmModel} 
+                      onValueChange={(value) => updateSetting('llmModel', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择模型" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.id}
+                          </SelectItem>
+                        ))}
+                        {availableModels.length === 0 && !isLoadingModels && (
+                          <SelectItem value="gpt-4.1-mini" disabled>
+                            无可用模型（请检查后端服务）
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <div className="text-xs text-muted-foreground">
+                      {isBackendRunning 
+                        ? (localSettings.llmApiKey && localSettings.llmBaseUrl 
+                          ? `使用自定义配置，已加载 ${availableModels.length} 个可用模型`
+                          : `使用全局配置，已加载 ${availableModels.length} 个可用模型`)
+                        : '后端服务未运行，无法获取模型列表'
+                      }
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <Label>连接测试</Label>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!localSettings.llmApiKey || !localSettings.llmBaseUrl) {
+                          toast.error('请先配置 API Key 和 Base URL')
+                          return
+                        }
+                        
+                        setIsLoadingModels(true)
+                        try {
+                          const models = await llmWrapper.getModels(localSettings.llmApiKey, localSettings.llmBaseUrl)
+                          setAvailableModels(models)
+                          
+                          // 智能模型选择逻辑：如果当前选择的模型不在获取到的模型列表中，自动选择合适的模型
+                          if (models.length > 0) {
+                            const currentModel = localSettings.llmModel
+                            const isCurrentModelAvailable = models.some(model => model.id === currentModel)
+                            
+                            if (!isCurrentModelAvailable) {
+                              // 优先查找 gpt-4.1-mini
+                              const preferredModel = models.find(model => model.id === 'gpt-4.1-mini')
+                              const selectedModel = preferredModel ? preferredModel.id : models[0].id
+                              
+                              console.log(`Current model "${currentModel}" not available, switching to "${selectedModel}"`)
+                              updateSetting('llmModel', selectedModel)
+                              toast.success(`连接成功！找到 ${models.length} 个可用模型，已自动选择：${selectedModel}`)
+                            } else {
+                              toast.success(`连接成功！找到 ${models.length} 个可用模型`)
+                            }
+                          } else {
+                            toast.success(`连接成功！找到 ${models.length} 个可用模型`)
+                          }
+                        } catch (error) {
+                          console.error('Connection test failed:', error)
+                          toast.error(`连接失败：${error}`)
+                        } finally {
+                          setIsLoadingModels(false)
+                        }
+                      }}
+                      disabled={!isBackendRunning || isLoadingModels || !localSettings.llmApiKey || !localSettings.llmBaseUrl}
+                      className="w-full"
+                    >
+                      {isLoadingModels ? '测试中...' : '测试连接并刷新模型'}
+                    </Button>
+                    <div className="text-xs text-muted-foreground">
+                      点击此按钮测试您的配置是否正确，并获取最新的模型列表
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <Label>快速配置</Label>
+                    <div className="grid grid-cols-1 gap-2">
+                      <Button
+                        variant="outline"
+                        className="justify-start h-auto p-3"
+                        onClick={() => {
+                          updateSetting('llmBaseUrl', 'https://api.openai.com/v1')
+                          updateSetting('llmModel', 'gpt-4.1-mini')
+                          toast.success('已应用 OpenAI 官方配置模板')
+                        }}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">OpenAI 官方</div>
+                          <div className="text-xs text-muted-foreground">使用 OpenAI 官方 API 服务</div>
+                        </div>
+                      </Button>
+                      
+                      <Button
+                        variant="outline"
+                        className="justify-start h-auto p-3"
+                        onClick={() => {
+                          updateSetting('llmBaseUrl', 'http://localhost:11434/v1')
+                          updateSetting('llmModel', 'qwen2.5-7b')
+                          updateSetting('llmApiKey', 'not-required')
+                          toast.success('已应用本地 Ollama 配置模板')
+                        }}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">本地 Ollama</div>
+                          <div className="text-xs text-muted-foreground">使用本地部署的 Ollama 服务</div>
+                        </div>
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="justify-start h-auto p-3"
+                        onClick={() => {
+                          updateSetting('llmBaseUrl', 'https://api.teea.cn/v1')
+                          updateSetting('llmModel', 'gpt-4.1-mini')
+                          toast.success('已应用第三方服务配置模板')
+                        }}
+                      >
+                        <div className="text-left">
+                          <div className="font-medium">第三方服务</div>
+                          <div className="text-xs text-muted-foreground">使用兼容 OpenAI 的第三方服务</div>
+                        </div>
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <Label>配置说明</Label>
+                    <div className="text-xs text-muted-foreground space-y-2">
+                      <p>• <strong>API Key</strong>: 您的LLM服务提供商API密钥</p>
+                      <p>• <strong>Base URL</strong>: API服务的基础URL，支持OpenAI兼容服务</p>
+                      <p>• <strong>模型</strong>: 要使用的具体模型名称</p>
+                      <p>• 配置保存后需要重新启动后端服务才能生效</p>
+                      <p>• 打包应用中的配置将存储在本地，不会上传到服务器</p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

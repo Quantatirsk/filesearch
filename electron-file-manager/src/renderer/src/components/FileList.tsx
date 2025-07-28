@@ -120,6 +120,7 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   const [isSummaryOpen, setIsSummaryOpen] = useState(false)
   const [summaryStream, setSummaryStream] = useState<ReadableStream<string> | null>(null)
   const [isSummarizing, setIsSummarizing] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
 
   // Context menu state
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
@@ -203,31 +204,52 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
   // 优化的事件处理函数，使用 useCallback 并移除依赖
   const handleSummarizeClick = useCallback((filePath: string) => {
     setSummaryStream(null)
+    setSummaryError(null)
     setSummaryFilePath(filePath)
     setIsSummaryOpen(true)
     setIsSummarizing(true)
     
     streamSummarizeFileContent(filePath)
-      .then(stream => setSummaryStream(stream))
+      .then(stream => {
+        setSummaryStream(stream)
+        setSummaryError(null)
+      })
       .catch(error => {
         console.error('Failed to summarize file:', error)
-        toast.error(`文件摘要生成失败: ${error}`)
+        const errorMessage = error?.message || String(error)
+        
+        // 检查是否是无法获取文件内容的错误
+        if (errorMessage.includes('File not found in index')) {
+          setSummaryError(`此文件不包含可读文本内容。\n\n该文件可能是：\n• 压缩文件（ZIP、RAR、7Z等）\n• 可执行文件（EXE、DLL等）\n• 扫描版PDF（纯图片，无文字层）\n• 二进制文件或加密文件\n• 其他不支持文本提取的格式\n\n💡 建议：请直接查看文件内容。`)
+        } else if (errorMessage.includes('Failed to get file content') || 
+            errorMessage.includes('文件内容为空') ||
+            errorMessage.includes('不支持的文件格式') ||
+            errorMessage.includes('无法读取文件') ||
+            errorMessage.includes('文件不存在')) {
+          setSummaryError(`暂时无法读取此文件内容。\n\n可能的原因：\n• 文件格式不支持文本提取（如图片、视频等）\n• 文件内容为空或已损坏\n• 文件已被删除或移动\n• 文件权限不足\n\n💡 建议：请尝试预览文件或使用其他方式查看。`)
+        } else {
+          setSummaryError(`暂时无法完成智能解读。\n\n${errorMessage}\n\n💡 您可以稍后重试或直接查看文件内容。`)
+          toast.error(`文件智能解读暂时不可用`)
+        }
+        
         setIsSummarizing(false)
+        setSummaryStream(null)
       })
   }, [streamSummarizeFileContent])
 
-  // Auto-start analysis when dialog opens
+  // Auto-start analysis when dialog opens - 添加错误状态检查避免无限重试
   useEffect(() => {
-    if (isSummaryOpen && summaryFilePath && !summaryStream && !isSummarizing) {
+    if (isSummaryOpen && summaryFilePath && !summaryStream && !isSummarizing && !summaryError) {
       handleSummarizeClick(summaryFilePath)
     }
-  }, [isSummaryOpen, summaryFilePath, summaryStream, isSummarizing, handleSummarizeClick])
+  }, [isSummaryOpen, summaryFilePath, summaryStream, isSummarizing, summaryError, handleSummarizeClick])
 
   const handleCloseSummary = useCallback(() => {
     setIsSummaryOpen(false)
     setSummaryFilePath(null)
     setSummaryStream(null)
     setIsSummarizing(false)
+    setSummaryError(null)
   }, [])
 
   const handleConfirmRename = useCallback(async () => {
@@ -875,7 +897,12 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => summaryFilePath && handleSummarizeClick(summaryFilePath)}
+                onClick={() => {
+                  if (summaryFilePath) {
+                    setSummaryError(null) // 清除之前的错误状态
+                    handleSummarizeClick(summaryFilePath)
+                  }
+                }}
                 disabled={isSummarizing || !summaryFilePath}
                 title="重新生成摘要"
               >
@@ -887,7 +914,35 @@ export const FileList: React.FC<FileListProps> = React.memo(({ containerRef }) =
           <div className="flex-1 p-3 overflow-hidden">
             <ScrollArea className="h-full rounded-md border bg-muted/30">
               <div className="p-4">
-                {summaryStream ? (
+                {summaryError ? (
+                  <div className="text-center py-8">
+                    <div className="mx-auto w-12 h-12 mb-3 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <Bot className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <p className="text-base font-medium text-amber-700 dark:text-amber-300 mb-3">
+                      暂时无法智能解读
+                    </p>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 text-left">
+                      <pre className="text-sm text-amber-800 dark:text-amber-200 whitespace-pre-wrap font-normal">
+                        {summaryError}
+                      </pre>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                      onClick={() => {
+                        if (summaryFilePath) {
+                          setSummaryError(null)
+                          handleSummarizeClick(summaryFilePath)
+                        }
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      重试解读
+                    </Button>
+                  </div>
+                ) : summaryStream ? (
                   <FinalStreamingRenderer 
                     key={summaryFilePath}
                     stream={summaryStream} 

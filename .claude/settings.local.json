@@ -20,7 +20,8 @@
       "Bash(rmdir:*)",
       "Bash(rd:*)",
       "Bash(powershell:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": []
   }

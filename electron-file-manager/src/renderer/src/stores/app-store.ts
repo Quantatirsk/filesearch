@@ -32,6 +32,11 @@ interface SettingsData {
   indexingBatchSize: number
   maxFileSize: number
   enableChineseTokenizer: boolean
+  
+  // LLM设置
+  llmApiKey: string
+  llmBaseUrl: string
+  llmModel: string
 }
 
 interface AppStore extends AppState {
@@ -100,7 +105,12 @@ const DEFAULT_SETTINGS: SettingsData = {
   
   indexingBatchSize: 1000,
   maxFileSize: 100, // MB
-  enableChineseTokenizer: true
+  enableChineseTokenizer: true,
+  
+  // LLM设置默认值
+  llmApiKey: '',
+  llmBaseUrl: 'https://api.openai.com/v1',
+  llmModel: 'gpt-4.1-mini'
 }
 
 export const useAppStore = create<AppStore>()(
