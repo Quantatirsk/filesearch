@@ -105,3 +105,4 @@ tests/demo_*_content.txt
 # YoYo AI version control directory
 .yoyo/
 electron-file-manager/resources/python/filesearch-backend.exe
+electron-file-manager/resources/python/filesearch-backend

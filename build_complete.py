@@ -112,21 +112,40 @@ def verify_build():
         print(f"❌ 未找到 Python 后端可执行文件: {backend_executable}")
         return False
     
-    # 检查 Electron 构建输出
-    dist_dir = Path('./electron-file-manager/dist')
-    if dist_dir.exists() and list(dist_dir.glob('*')):
-        print(f"✅ Electron 发布文件目录: {dist_dir}")
-        for item in dist_dir.iterdir():
-            print(f"  📁 {item.name}")
+    # 检查 electron-vite 构建输出 (开发构建)
+    out_dir = Path('./electron-file-manager/out')
+    if out_dir.exists() and list(out_dir.glob('*')):
+        print(f"✅ Electron 开发构建: {out_dir}")
+        for item in out_dir.iterdir():
+            if item.is_dir():
+                print(f"  📁 {item.name}/")
+            else:
+                print(f"  📄 {item.name}")
     else:
-        print(f"⚠️ 未找到 Electron 发布文件: {dist_dir}")
-        # 检查是否有 out 目录（开发构建）
-        out_dir = Path('./electron-file-manager/out')
-        if out_dir.exists():
-            print(f"✅ Electron 开发构建: {out_dir}")
+        print(f"❌ 未找到 Electron 开发构建: {out_dir}")
+        return False
+    
+    # 检查 Electron Builder 发布输出
+    dist_dir = Path('./electron-file-manager/dist')
+    if dist_dir.exists():
+        dist_contents = list(dist_dir.glob('*'))
+        if dist_contents:
+            print(f"✅ Electron 发布文件目录: {dist_dir}")
+            for item in dist_dir.iterdir():
+                if item.is_dir():
+                    print(f"  📁 {item.name}/")
+                else:
+                    size_mb = item.stat().st_size / 1024 / 1024
+                    print(f"  📦 {item.name} ({size_mb:.1f} MB)")
         else:
-            print("❌ 未找到任何 Electron 构建输出")
-            return False
+            print(f"⚠️ Electron 发布目录为空: {dist_dir}")
+            print("💡 这通常表示 electron-builder 构建步骤未成功执行")
+            print("   - electron-vite build ✅ (开发构建完成)")
+            print("   - electron-builder ❌ (发布构建未完成)")
+            # 这不是致命错误，开发构建已经足够使用
+    else:
+        print(f"ℹ️ 未找到 Electron 发布目录: {dist_dir}")
+        print("💡 可能尚未执行 electron-builder 构建步骤")
     
     print("✅ 构建验证完成")
     return True

@@ -25,7 +25,8 @@
       "Bash(autopep8:*)",
       "Bash(sed:*)",
       "Bash(kill:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

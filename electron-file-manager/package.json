@@ -92,8 +92,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
-    "afterSign": false,
     "forceCodeSigning": false,
+    "afterSign": null,
     "electronVersion": "32.3.3",
     "files": [
       "out/**/*",
@@ -110,7 +110,13 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "resources/icons/search.icns"
+      "icon": "resources/icons/search.icns",
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["arm64", "x64"]
+        }
+      ]
     },
     "win": {
       "target": [
