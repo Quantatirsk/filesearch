@@ -21,7 +21,11 @@
       "Bash(rd:*)",
       "Bash(powershell:*)",
       "Bash(python:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(autopep8:*)",
+      "Bash(sed:*)",
+      "Bash(kill:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }

@@ -418,40 +418,6 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
     }
   }, [inputValue, isStreaming, streamChatWithAssistant, updateUserMessageSearchState])
 
-  const handleStopStream = useCallback(() => {
-    if (abortControllerRef.current && currentSearchingMessageId) {
-      abortControllerRef.current.abort()
-      setIsStreaming(false)
-      
-      // 如果已经收集到搜索进度，保持完成状态和内容
-      if (searchProgressCollectedRef.current) {
-        updateUserMessageSearchState(currentSearchingMessageId, {
-          isSearching: false,
-          searchCompleted: true
-        })
-      } else {
-        updateUserMessageSearchState(currentSearchingMessageId, {
-          isSearching: false,
-          searchCompleted: false
-        })
-      }
-      setCurrentSearchingMessageId(null)
-      // 永远不清空搜索内容，让用户能看到已经收集到的进度
-      
-      if (currentStreamingMessage) {
-        // Save current streamed content as a message
-        const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: currentStreamingMessage + ' (已中断)',
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-        setCurrentStreamingMessage('')
-      }
-    }
-  }, [currentStreamingMessage, currentSearchingMessageId, updateUserMessageSearchState])
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
