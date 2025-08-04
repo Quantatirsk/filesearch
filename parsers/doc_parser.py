@@ -13,18 +13,18 @@ from doc2txt import extract_text
 class DOCParser(BaseParser):
     """
     Parser for legacy Word documents (.doc) using doc2txt library.
-    
+
     The doc2txt library provides a Python wrapper around antiword
     with built-in cross-platform support and text optimization.
     """
-    
+
     def parse(self, file_path: str) -> Optional[str]:
         """
         Parse a DOC file and extract optimized text.
-        
+
         Args:
             file_path: Path to the DOC file
-            
+
         Returns:
             Extracted and optimized text or None if parsing fails
         """
@@ -33,11 +33,10 @@ class DOCParser(BaseParser):
         except Exception as e:
             print(f"Error parsing DOC file {file_path}: {e}")
             return None
-    
+
     def get_supported_extensions(self) -> list:
         """Get supported file extensions."""
         return ['.doc']
-
 
 
 # Register the DOC parser

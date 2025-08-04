@@ -604,7 +604,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={() => onClose()}>
-      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col p-0 gap-0 focus:outline-none focus-visible:outline-none">
+      <DialogContent className="w-[calc(100vw-4rem)] h-[calc(100vh-4rem)] max-w-none flex flex-col p-0 gap-0 focus:outline-none focus-visible:outline-none" hideCloseButton={true}>
         <DialogHeader className="px-2 py-3 border-b flex-shrink-0">
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -618,7 +618,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-3">
               {messages.length > 0 && (
                 <Button
                   variant="ghost"
@@ -893,39 +893,21 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
               />
                     
               <TooltipProvider delayDuration={0}>
-                {isStreaming ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleStopStream}
-                        variant="outline"
-                        size="icon"
-                        className="h-10 w-10 rounded-xl border-2"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>停止生成</p>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim()}
-                        size="icon"
-                        className="h-10 w-10 rounded-xl"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>发送消息 (Enter)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleSendMessage}
+                      disabled={!inputValue.trim() || isStreaming}
+                      size="icon"
+                      className="h-10 w-10 rounded-xl"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>发送消息 (Enter)</p>
+                  </TooltipContent>
+                </Tooltip>
               </TooltipProvider>
             </div>
           </div>

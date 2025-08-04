@@ -16,25 +16,25 @@ from .base_parser import BaseParser
 class EnhancedTextParser(BaseParser):
     """
     Enhanced parser for all text-based file formats.
-    
+
     Supports programming languages, configuration files, documentation,
     and other text-based formats commonly found in software projects.
     """
-    
+
     def parse(self, file_path: str) -> Optional[str]:
         """
         Parse any text-based file.
-        
+
         Args:
             file_path: Path to the text file
-            
+
         Returns:
             File content as string or None if parsing fails
         """
         try:
             # Try multiple encodings to handle different file types
             encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
-            
+
             for encoding in encodings:
                 try:
                     with open(file_path, 'r', encoding=encoding, errors='ignore') as f:
@@ -46,31 +46,31 @@ class EnhancedTextParser(BaseParser):
                     continue
                 except Exception:
                     continue
-            
+
             # If all encodings fail, try reading as binary and decode with errors ignored
             with open(file_path, 'rb') as f:
                 raw_content = f.read()
                 return raw_content.decode('utf-8', errors='ignore')
-                
+
         except Exception as e:
             print(f"Error parsing text file {file_path}: {e}")
             return None
-    
+
     def is_supported(self, file_path: str) -> bool:
         """
         Check if a file is supported by this parser.
         Includes support for common files without extensions.
         """
         from pathlib import Path
-        
+
         file_path_obj = Path(file_path)
         file_ext = file_path_obj.suffix.lower()
         file_name = file_path_obj.name.lower()
-        
+
         # Check by extension first
         if file_ext in self.get_supported_extensions():
             return True
-            
+
         # Check common files without extensions
         extensionless_files = {
             'dockerfile', 'containerfile', 'makefile', 'rakefile', 'gemfile', 'procfile',
@@ -78,15 +78,15 @@ class EnhancedTextParser(BaseParser):
             'license', 'readme', 'changelog', 'authors', 'contributors', 'copying',
             'install', 'news', 'todo', 'bugs', 'credits', 'acknowledgments'
         }
-        
+
         return file_name in extensionless_files
-    
+
     def get_supported_extensions(self) -> list:
         """Get all supported text-based file extensions."""
         return [
             # Basic text files
             '.txt', '.text', '.md', '.markdown', '.rst', '.rtf',
-            
+
             # Programming languages
             '.py', '.pyx', '.pyi', '.pyw',  # Python
             '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',  # JavaScript/TypeScript
@@ -136,7 +136,7 @@ class EnhancedTextParser(BaseParser):
             '.ts',  # TypeScript
             '.flow',  # Flow
             '.ino', '.pde',  # Arduino
-            
+
             # Web technologies
             '.html', '.htm', '.xhtml', '.shtml',  # HTML
             '.css', '.scss', '.sass', '.less', '.styl',  # CSS and preprocessors
@@ -147,7 +147,7 @@ class EnhancedTextParser(BaseParser):
             '.ejs', '.erb', '.haml', '.jade', '.pug',  # Template engines
             '.mustache', '.hbs', '.handlebars',  # Handlebars
             '.twig',  # Twig
-            
+
             # Configuration files
             '.json', '.jsonc', '.json5',  # JSON
             '.yaml', '.yml',  # YAML
@@ -167,17 +167,17 @@ class EnhancedTextParser(BaseParser):
             '.k8s', '.kube',  # Kubernetes
             '.ansible',  # Ansible
             '.vagrant',  # Vagrant
-            
+
             # Shell scripts
             '.sh', '.bash', '.zsh', '.fish', '.csh', '.tcsh', '.ksh',  # Unix shells
             '.bat', '.cmd',  # Windows batch
-            
+
             # Build files
             '.make', '.am', '.in',  # Autotools
             '.pro', '.pri',  # Qt project files
             '.vcxproj', '.vcproj', '.sln',  # Visual Studio
             '.pbxproj', '.xcodeproj',  # Xcode
-            
+
             # Documentation
             '.tex', '.latex', '.cls', '.sty',  # LaTeX
             '.pod',  # Perl POD
@@ -186,7 +186,7 @@ class EnhancedTextParser(BaseParser):
             '.wiki',  # Wiki markup
             '.textile',  # Textile
             '.asciidoc', '.adoc',  # AsciiDoc
-            
+
             # Data formats
             '.tsv', '.tab',  # Tab-separated values
             '.log',  # Log files
@@ -195,7 +195,7 @@ class EnhancedTextParser(BaseParser):
             '.editorconfig',  # Editor config
             '.eslintrc', '.prettierrc', '.babelrc',  # JS tool configs
             '.pylintrc', '.flake8', '.mypy.ini',  # Python tool configs
-            
+
             # Other text formats
             '.txt', '.text',  # Plain text
             '.readme', '.license', '.changelog', '.authors',  # Project files

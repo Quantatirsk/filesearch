@@ -6,30 +6,18 @@ Provides HTTP REST API endpoints for the document search functionality,
 supporting indexing, searching, and management operations.
 """
 
+from parsers.base_parser import ParserFactory
+from core.search_manager import SearchManager
+from core.indexer import DocumentIndexer
+from core.database import DocumentDatabase
 import sys
 import os
-import signal
 import psutil
 import socket
 from pathlib import Path
-
-# Fix Windows multiprocessing issue in packaged exe
-if __name__ == "__main__":
-    import multiprocessing as mp
-    mp.freeze_support()
-
-# Fix Windows encoding issue for emoji display
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
-    except:
-        pass
 from typing import List, Dict, Any, Optional
-import tempfile
 import shutil
-
-from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Body
+from fastapi import FastAPI, HTTPException, File, UploadFile, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -43,6 +31,19 @@ from sse_starlette.sse import EventSourceResponse
 import threading
 from collections import defaultdict
 
+# Fix Windows multiprocessing issue in packaged exe
+if __name__ == "__main__":
+    import multiprocessing as mp
+    mp.freeze_support()
+
+# Fix Windows encoding issue for emoji display
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Add project root to path - handle PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     # PyInstaller bundle environment
@@ -53,11 +54,6 @@ else:
 
 sys.path.insert(0, str(project_root))
 
-from core.database import DocumentDatabase
-from core.indexer import DocumentIndexer
-from core.search_manager import SearchManager
-from parsers.base_parser import ParserFactory
-
 
 # Pydantic models for request/response validation
 class SearchRequest(BaseModel):
@@ -66,6 +62,7 @@ class SearchRequest(BaseModel):
     limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
     min_fuzzy_score: float = Field(30.0, ge=0.0, le=100.0, description="Minimum fuzzy similarity score")
     file_types: Optional[List[str]] = Field(None, description="File types to include in search")
+
 
 class SearchResponse(BaseModel):
     success: bool
@@ -77,12 +74,14 @@ class SearchResponse(BaseModel):
     limit: int
     error: Optional[str] = None
 
+
 class AdvancedSearchRequest(BaseModel):
     content_query: Optional[str] = Field(None, description="Content search query")
     path_query: Optional[str] = Field(None, description="Path search query")
     file_types: Optional[List[str]] = Field(None, description="File types to include")
     fuzzy: bool = Field(False, description="Use fuzzy matching for content")
     limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
+
 
 class MetadataSearchRequest(BaseModel):
     min_size: Optional[int] = Field(None, description="Minimum file size in bytes")
@@ -94,6 +93,7 @@ class MetadataSearchRequest(BaseModel):
     file_types: Optional[List[str]] = Field(None, description="File types to include")
     limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
 
+
 class CombinedSearchRequest(BaseModel):
     content_query: Optional[str] = Field(None, description="Content search query")
     path_query: Optional[str] = Field(None, description="Path search query")
@@ -104,11 +104,13 @@ class CombinedSearchRequest(BaseModel):
     file_types: Optional[List[str]] = Field(None, description="File types to include")
     limit: int = Field(100, ge=1, le=9999, description="Maximum number of results")
 
+
 class IndexRequest(BaseModel):
     directory: str = Field(..., description="Directory path to index")
     force: bool = Field(False, description="Force reindexing of all files")
     workers: Optional[int] = Field(None, description="Number of worker processes")
     include_all_files: bool = Field(False, description="Include all file types (not just text files)")
+
 
 class IndexResponse(BaseModel):
     success: bool
@@ -116,6 +118,7 @@ class IndexResponse(BaseModel):
     total_files: int
     processing_time: float
     error: Optional[str] = None
+
 
 class StatsResponse(BaseModel):
     success: bool
@@ -125,8 +128,10 @@ class StatsResponse(BaseModel):
     file_types: Dict[str, int]
     error: Optional[str] = None
 
+
 class FileContentRequest(BaseModel):
     file_path: str = Field(..., description="Path to the file")
+
 
 class FileContentResponse(BaseModel):
     success: bool
@@ -134,17 +139,21 @@ class FileContentResponse(BaseModel):
     content: Optional[str]
     error: Optional[str] = None
 
+
 class RemoveFileRequest(BaseModel):
     file_path: str = Field(..., description="Path to the file to remove from index")
+
 
 class RemoveFileResponse(BaseModel):
     success: bool
     file_path: str
     error: Optional[str] = None
 
+
 class UpdateFilePathRequest(BaseModel):
     old_path: str = Field(..., description="Current file path")
     new_path: str = Field(..., description="New file path")
+
 
 class UpdateFilePathResponse(BaseModel):
     success: bool
@@ -153,9 +162,12 @@ class UpdateFilePathResponse(BaseModel):
     error: Optional[str] = None
 
 # LLM Chat Completions Models
+
+
 class ChatMessage(BaseModel):
     role: str = Field(..., description="Message role: system, user, assistant")
     content: str = Field(..., description="Message content")
+
 
 class ChatCompletionRequest(BaseModel):
     model: Optional[str] = Field(default=None, description="Model name")
@@ -166,11 +178,13 @@ class ChatCompletionRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, description="OpenAI API key override")
     base_url: Optional[str] = Field(default=None, description="OpenAI base URL override")
 
+
 class ChatCompletionChoice(BaseModel):
     index: int
     message: Optional[ChatMessage] = None
     delta: Optional[Dict[str, Any]] = None
     finish_reason: Optional[str] = None
+
 
 class ChatCompletionResponse(BaseModel):
     id: str
@@ -238,7 +252,7 @@ default_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 try:
     openai_api_key = os.getenv("OPENAI_API_KEY")
     openai_base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    
+
     if openai_api_key:
         openai_client = openai.OpenAI(
             api_key=openai_api_key,
@@ -278,21 +292,21 @@ def is_port_in_use(port: int, host: str = "localhost") -> bool:
 def kill_process_on_port(port: int) -> bool:
     """
     Kill process using the specified port with optimized hybrid strategy
-    
+
     Strategy:
     1. Unix systems: Use lsof for high performance
     2. Fallback: Use psutil for cross-platform compatibility
     3. Graceful termination followed by force kill if needed
     """
     import platform
-    
+
     # Strategy 1: Use lsof on Unix systems (macOS/Linux) - high performance
     if platform.system() in ['Darwin', 'Linux']:
         print(f"🔍 Using lsof to find processes on port {port}")
         if _kill_with_lsof(port):
             return True
         print("⚠️  lsof method failed, falling back to psutil")
-    
+
     # Strategy 2: Fallback to psutil (Windows compatible + lsof failure)
     print(f"🔍 Using psutil to find processes on port {port}")
     return _kill_with_psutil(port)
@@ -303,50 +317,50 @@ def _kill_with_lsof(port: int) -> bool:
     try:
         import subprocess
         import time
-        
+
         # Find processes using the port
         result = subprocess.run(
-            ['lsof', '-ti', f':{port}'], 
-            capture_output=True, 
-            text=True, 
+            ['lsof', '-ti', f':{port}'],
+            capture_output=True,
+            text=True,
             timeout=5
         )
-        
+
         if not result.stdout.strip():
             print(f"✅ No process found using port {port}")
             return True
-            
+
         pids = [pid.strip() for pid in result.stdout.strip().split('\n') if pid.strip()]
-        
+
         if not pids:
             return True
-            
+
         print(f"🎯 Found {len(pids)} process(es) using port {port}: {pids}")
-        
+
         # Graceful termination strategy
         for pid in pids:
             try:
                 # Step 1: Send SIGTERM for graceful shutdown
                 subprocess.run(['kill', '-TERM', pid], timeout=3, check=True)
                 print(f"📤 Sent SIGTERM to process {pid}")
-                
+
                 # Step 2: Wait 3 seconds for graceful shutdown
                 time.sleep(3)
-                
+
                 # Step 3: Check if process still exists
                 check_result = subprocess.run(
-                    ['kill', '-0', pid], 
-                    capture_output=True, 
+                    ['kill', '-0', pid],
+                    capture_output=True,
                     timeout=2
                 )
-                
+
                 if check_result.returncode == 0:
                     # Process still exists, force kill
                     subprocess.run(['kill', '-9', pid], timeout=3, check=True)
                     print(f"💥 Force killed process {pid}")
                 else:
                     print(f"✅ Process {pid} terminated gracefully")
-                    
+
             except subprocess.CalledProcessError as e:
                 if e.returncode == 1:  # Process already dead
                     print(f"✅ Process {pid} already terminated")
@@ -356,9 +370,9 @@ def _kill_with_lsof(port: int) -> bool:
             except subprocess.TimeoutExpired:
                 print(f"⏰ Timeout killing process {pid}")
                 continue
-                
+
         return True
-        
+
     except subprocess.TimeoutExpired:
         print("⏰ lsof command timed out")
         return False
@@ -374,19 +388,19 @@ def _kill_with_psutil(port: int) -> bool:
     """Cross-platform psutil-based process killing (optimized)"""
     try:
         killed_any = False
-        
+
         for proc in psutil.process_iter(['pid', 'name']):
             try:
                 # Skip obvious system processes for performance
                 if proc.info['name'] in ['kernel_task', 'launchd', 'systemd', 'kthreadd']:
                     continue
-                    
+
                 # Get network connections for this process
                 connections = proc.net_connections()
                 for conn in connections:
                     if hasattr(conn, 'laddr') and conn.laddr and conn.laddr.port == port:
                         print(f"🎯 Found process {proc.info['pid']} ({proc.info['name']}) using port {port}")
-                        
+
                         # Graceful termination -> force kill strategy
                         try:
                             proc.terminate()  # SIGTERM
@@ -395,17 +409,17 @@ def _kill_with_psutil(port: int) -> bool:
                         except psutil.TimeoutExpired:
                             proc.kill()  # SIGKILL
                             print(f"💥 Force killed process {proc.info['pid']}")
-                        
+
                         killed_any = True
-                        
+
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
             except Exception:
                 # Skip processes we can't access
                 continue
-                
+
         return killed_any
-        
+
     except Exception as e:
         print(f"❌ psutil method failed: {e}")
         return False
@@ -416,14 +430,14 @@ def cleanup_port(port: int, host: str = "localhost") -> None:
     # Check both IPv4 and IPv6
     ipv4_in_use = is_port_in_use(port, host)
     ipv6_in_use = is_port_in_use(port, "::1") if host in ["localhost", "127.0.0.1"] else False
-    
+
     if not (ipv4_in_use or ipv6_in_use):
         if os.getenv('DEBUG'):
             print(f"✅ Port {port} is available")
         return
-    
+
     print(f"🚨 Port {port} is in use, cleaning up...")
-    
+
     # Use optimized kill function (includes both lsof and psutil strategies)
     if kill_process_on_port(port):
         # Wait for port to be fully released
@@ -433,7 +447,7 @@ def cleanup_port(port: int, host: str = "localhost") -> None:
             if not is_port_in_use(port, host):
                 print(f"🎉 Port {port} is now available")
                 return
-        
+
         print(f"⚠️  Port {port} still appears busy after cleanup")
     else:
         print(f"❌ Failed to clean up port {port} - server startup may fail")
@@ -477,9 +491,9 @@ async def search_documents(
 ):
     """
     Search documents using various search types
-    
+
     - **exact**: Exact phrase matching
-    - **fuzzy**: Fuzzy similarity matching  
+    - **fuzzy**: Fuzzy similarity matching
     - **path**: File path pattern matching
     - **hybrid**: Combined search using all methods with deduplication
     """
@@ -492,9 +506,9 @@ async def search_documents(
             min_fuzzy_score=request.min_fuzzy_score,
             file_types=request.file_types
         )
-        
+
         return SearchResponse(**result)
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -516,9 +530,9 @@ async def advanced_search(
             fuzzy=request.fuzzy,
             limit=request.limit
         )
-        
+
         return SearchResponse(**result)
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -533,7 +547,7 @@ async def metadata_search(
     """
     try:
         start_time = time.time()
-        
+
         with get_database(db_path) as db:
             results = db.search_by_metadata(
                 min_size=request.min_size,
@@ -545,9 +559,9 @@ async def metadata_search(
                 file_types=request.file_types,
                 limit=request.limit
             )
-        
+
         search_time = time.time() - start_time
-        
+
         return SearchResponse(
             success=True,
             query="metadata_search",
@@ -557,7 +571,7 @@ async def metadata_search(
             search_time=search_time,
             limit=request.limit
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -572,7 +586,7 @@ async def combined_search(
     """
     try:
         start_time = time.time()
-        
+
         with get_database(db_path) as db:
             results = db.search_combined(
                 content_query=request.content_query,
@@ -584,9 +598,9 @@ async def combined_search(
                 file_types=request.file_types,
                 limit=request.limit
             )
-        
+
         search_time = time.time() - start_time
-        
+
         # Determine search type based on what filters were used
         search_type = "combined"
         if request.content_query:
@@ -595,7 +609,7 @@ async def combined_search(
             search_type += "_path"
         if any([request.min_size, request.max_size, request.created_after, request.created_before]):
             search_type += "_metadata"
-        
+
         return SearchResponse(
             success=True,
             query=f"content:{request.content_query or ''} path:{request.path_query or ''}",
@@ -605,7 +619,7 @@ async def combined_search(
             search_time=search_time,
             limit=request.limit
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -621,7 +635,7 @@ async def get_file_content(
     try:
         with get_database(db_path) as db:
             content = db.get_document_content(request.file_path)
-            
+
             if content is None:
                 return FileContentResponse(
                     success=False,
@@ -629,13 +643,13 @@ async def get_file_content(
                     content=None,
                     error="File not found in index"
                 )
-            
+
             return FileContentResponse(
                 success=True,
                 file_path=request.file_path,
                 content=content
             )
-    
+
     except Exception as e:
         return FileContentResponse(
             success=False,
@@ -660,36 +674,36 @@ async def index_directory(
         print(f"[DEBUG] Current working directory: {Path.cwd()}")
         print(f"[DEBUG] Directory exists: {directory_path.exists()}")
         print(f"[DEBUG] Directory is dir: {directory_path.is_dir()}")
-        
+
         if not directory_path.exists():
             raise HTTPException(status_code=404, detail="Directory not found")
-        
+
         if not directory_path.is_dir():
             raise HTTPException(status_code=400, detail="Path is not a directory")
-        
+
         # Check database directory permissions
         db_path_obj = Path(db_path)
         db_dir = db_path_obj.parent
         print(f"[DEBUG] Database directory: {db_dir}")
         print(f"[DEBUG] Database directory exists: {db_dir.exists()}")
         print(f"[DEBUG] Database directory writable: {os.access(db_dir, os.W_OK)}")
-        
+
         indexer = DocumentIndexer(db_path, max_workers=request.workers)
         stats = indexer.index_directory(
             str(directory_path),
             force_reindex=request.force,
             include_all_files=request.include_all_files
         )
-        
+
         print(f"[DEBUG] Indexing stats: {stats}")
-        
+
         return IndexResponse(
             success=True,
             indexed_files=stats.get('indexed_files', 0),
             total_files=stats.get('total_files', 0),
             processing_time=stats.get('processing_time', 0.0)
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -699,8 +713,8 @@ async def get_indexing_progress():
     """
     Get current indexing progress for polling
     """
-    global current_indexing_session
-    
+    # Remove unused global statement - variable is accessed from module level
+
     with progress_lock:
         # Check if there's a current indexing session
         if not current_indexing_session or current_indexing_session not in indexing_progress:
@@ -713,15 +727,15 @@ async def get_indexing_progress():
                 "elapsed_time": 0,
                 "eta": 0
             }
-        
+
         # Get the current session progress
         progress = dict(indexing_progress[current_indexing_session])
-        
+
         # Calculate timing information
         elapsed_time = progress.get("elapsed_time", 0)
         speed = progress.get("speed", 0)
         eta = progress.get("eta", 0)
-        
+
         return {
             "status": progress["status"],
             "processed": progress["processed_files"],
@@ -742,7 +756,7 @@ async def get_index_progress(session_id: str):
         while True:
             with progress_lock:
                 progress = dict(indexing_progress[session_id])
-            
+
             # Send progress update
             yield {
                 "event": "progress",
@@ -754,7 +768,7 @@ async def get_index_progress(session_id: str):
                     "errors": progress["errors"][-5:]  # Last 5 errors
                 })
             }
-            
+
             # Check if indexing is complete
             if progress["status"] in ["completed", "failed"]:
                 yield {
@@ -762,10 +776,10 @@ async def get_index_progress(session_id: str):
                     "data": json.dumps({"status": progress["status"]})
                 }
                 break
-            
+
             # Wait before next update
             await asyncio.sleep(0.5)
-    
+
     return EventSourceResponse(event_generator())
 
 
@@ -779,11 +793,12 @@ async def index_directory_stream(
     """
     import uuid
     session_id = str(uuid.uuid4())
-    
+
     # Initialize progress for this session
-    global current_indexing_session
+    # Remove unused global statement - variable is accessed from module level
     start_time = time.time()
     with progress_lock:
+        global current_indexing_session
         current_indexing_session = session_id
         indexing_progress[session_id] = {
             "status": "starting",
@@ -796,24 +811,24 @@ async def index_directory_stream(
             "speed": 0,
             "eta": 0
         }
-    
+
     # Start indexing in background thread
     def run_indexing():
         try:
             directory_path = Path(request.directory)
-            
+
             if not directory_path.exists():
                 with progress_lock:
                     indexing_progress[session_id]["status"] = "failed"
                     indexing_progress[session_id]["errors"].append("Directory not found")
                 return
-            
+
             if not directory_path.is_dir():
                 with progress_lock:
                     indexing_progress[session_id]["status"] = "failed"
                     indexing_progress[session_id]["errors"].append("Path is not a directory")
                 return
-            
+
             # Create custom indexer with progress callback
             def progress_callback(stats):
                 with progress_lock:
@@ -821,14 +836,14 @@ async def index_directory_stream(
                     elapsed_time = current_time - start_time
                     processed = stats.get("processed_files", 0)
                     total = stats.get("total_files", 0)
-                    
+
                     # Calculate speed (files per second)
                     speed = processed / elapsed_time if elapsed_time > 0 else 0
-                    
+
                     # Calculate ETA (estimated time to completion)
                     remaining = total - processed
                     eta = remaining / speed if speed > 0 and remaining > 0 else 0
-                    
+
                     indexing_progress[session_id].update({
                         "status": "indexing",
                         "processed_files": processed,
@@ -838,9 +853,9 @@ async def index_directory_stream(
                         "speed": speed,
                         "eta": eta
                     })
-            
+
             indexer = DocumentIndexer(db_path, max_workers=request.workers)
-            
+
             # Use the indexer with progress callback
             stats = indexer.index_directory(
                 str(directory_path),
@@ -848,7 +863,7 @@ async def index_directory_stream(
                 include_all_files=request.include_all_files,
                 progress_callback=progress_callback
             )
-            
+
             with progress_lock:
                 final_time = time.time()
                 final_elapsed = final_time - start_time
@@ -862,15 +877,15 @@ async def index_directory_stream(
                 })
                 # Keep current session for a bit so UI can show completion
                 # It will be cleared after timeout or new session starts
-        
+
         except Exception as e:
             with progress_lock:
                 indexing_progress[session_id]["status"] = "failed"
                 indexing_progress[session_id]["errors"].append(str(e))
-    
+
     # Start indexing in background
     threading.Thread(target=run_indexing, daemon=True).start()
-    
+
     return JSONResponse({
         "session_id": session_id,
         "message": "Indexing started",
@@ -888,32 +903,32 @@ async def upload_and_index(
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
-    
+
     # Create temporary directory for uploads
     temp_dir = Path(UPLOAD_TEMP_DIR)
     temp_dir.mkdir(exist_ok=True)
-    
+
     try:
         uploaded_files = []
-        
+
         # Save uploaded files to temporary directory
         for file in files:
             if file.filename:
                 file_path = temp_dir / file.filename
-                
+
                 with open(file_path, "wb") as buffer:
                     content = await file.read()
                     buffer.write(content)
-                
+
                 uploaded_files.append(str(file_path))
-        
+
         # Index uploaded files
         indexer = DocumentIndexer(db_path)
         stats = indexer.index_directory(
             str(temp_dir),
             force_reindex=True
         )
-        
+
         return {
             "success": True,
             "uploaded_files": len(uploaded_files),
@@ -921,10 +936,10 @@ async def upload_and_index(
             "processing_time": stats.get('processing_time', 0.0),
             "files": [Path(f).name for f in uploaded_files]
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
     finally:
         # Clean up temporary files
         if temp_dir.exists():
@@ -941,10 +956,10 @@ async def get_database_stats(
     try:
         search_manager = get_search_manager(db_path)
         stats = search_manager.get_search_stats()
-        
+
         if 'error' in stats:
             raise HTTPException(status_code=500, detail=stats['error'])
-        
+
         return StatsResponse(
             success=True,
             document_count=stats.get('document_count', 0),
@@ -952,7 +967,7 @@ async def get_database_stats(
             database_size=stats.get('database_size', 0),
             file_types=stats.get('file_types', {})
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -969,13 +984,13 @@ async def suggest_queries(
     try:
         search_manager = get_search_manager(db_path)
         suggestions = search_manager.suggest_query(query, max_suggestions)
-        
+
         return {
             "query": query,
             "suggestions": suggestions,
             "count": len(suggestions)
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -990,20 +1005,20 @@ async def clear_index(
     """
     if not confirm:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Index clearing requires confirmation parameter to be true"
         )
-    
+
     try:
         db_file = Path(db_path)
         if db_file.exists():
             db_file.unlink()
-        
+
         return {
             "success": True,
             "message": "Search index cleared successfully"
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1016,7 +1031,7 @@ async def get_supported_formats():
     try:
         parser_factory = ParserFactory()
         supported_formats = list(parser_factory._parsers.keys())
-        
+
         # Categorize formats for better UI organization
         format_categories = {
             "documents": {
@@ -1028,23 +1043,23 @@ async def get_supported_formats():
             "programming": {
                 "name": "Programming Languages",
                 "description": "Source code files",
-                "formats": [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp", 
-                           ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".scala", ".pl", ".lua", 
-                           ".r", ".m", ".asm", ".sql", ".vbs", ".ps1", ".hs", ".ml", ".clj", ".ex", ".elm"],
+                "formats": [".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp",
+                            ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".scala", ".pl", ".lua",
+                            ".r", ".m", ".asm", ".sql", ".vbs", ".ps1", ".hs", ".ml", ".clj", ".ex", ".elm"],
                 "icon": "Code"
             },
             "web": {
                 "name": "Web Technologies",
                 "description": "Web development files",
-                "formats": [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte", 
-                           ".xml", ".svg", ".jsp", ".asp", ".ejs", ".erb", ".mustache", ".twig"],
+                "formats": [".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+                            ".xml", ".svg", ".jsp", ".asp", ".ejs", ".erb", ".mustache", ".twig"],
                 "icon": "Globe"
             },
             "config": {
                 "name": "Configuration Files",
                 "description": "Configuration and data files",
-                "formats": [".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env", 
-                           ".properties", ".dockerfile", ".makefile", ".gitignore", ".editorconfig"],
+                "formats": [".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env",
+                            ".properties", ".dockerfile", ".makefile", ".gitignore", ".editorconfig"],
                 "icon": "Settings"
             },
             "shell": {
@@ -1062,12 +1077,12 @@ async def get_supported_formats():
             "build": {
                 "name": "Build & Deploy",
                 "description": "Build and deployment files",
-                "formats": [".makefile", ".cmake", ".gradle", ".maven", ".sbt", ".dockerfile", 
-                           ".terraform", ".k8s", ".ansible", ".vagrant"],
+                "formats": [".makefile", ".cmake", ".gradle", ".maven", ".sbt", ".dockerfile",
+                            ".terraform", ".k8s", ".ansible", ".vagrant"],
                 "icon": "Package"
             }
         }
-        
+
         # Filter categories to only include formats that are actually supported
         filtered_categories = {}
         for category_key, category_data in format_categories.items():
@@ -1078,7 +1093,7 @@ async def get_supported_formats():
                     "formats": supported_in_category,
                     "count": len(supported_in_category)
                 }
-        
+
         # Get format descriptions
         format_descriptions = {
             # Documents
@@ -1089,7 +1104,7 @@ async def get_supported_formats():
             ".xls": "Microsoft Excel 97-2003",
             ".csv": "Comma Separated Values",
             ".rtf": "Rich Text Format",
-            
+
             # Programming Languages
             ".py": "Python",
             ".js": "JavaScript",
@@ -1113,7 +1128,7 @@ async def get_supported_formats():
             ".sql": "SQL",
             ".hs": "Haskell",
             ".ml": "OCaml",
-            
+
             # Web Technologies
             ".html": "HTML",
             ".css": "CSS",
@@ -1121,27 +1136,27 @@ async def get_supported_formats():
             ".vue": "Vue.js",
             ".xml": "XML",
             ".svg": "SVG",
-            
+
             # Configuration
             ".json": "JSON",
             ".yaml": "YAML",
             ".toml": "TOML",
             ".ini": "INI Config",
             ".env": "Environment Variables",
-            
+
             # Documentation
             ".md": "Markdown",
             ".rst": "reStructuredText",
             ".tex": "LaTeX",
             ".txt": "Plain Text",
-            
+
             # Shell Scripts
             ".sh": "Shell Script",
             ".bash": "Bash Script",
             ".bat": "Batch File",
             ".ps1": "PowerShell"
         }
-        
+
         return {
             "success": True,
             "supported_formats": supported_formats,
@@ -1154,7 +1169,7 @@ async def get_supported_formats():
                 "text_formats": len([f for f in supported_formats if f not in [".pdf", ".docx", ".doc", ".xlsx", ".xls"]])
             }
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1170,13 +1185,13 @@ async def remove_file_from_index(
     try:
         with get_database(db_path) as db:
             success = db.remove_document(request.file_path)
-            
+
             return RemoveFileResponse(
                 success=success,
                 file_path=request.file_path,
                 error=None if success else "File not found in index"
             )
-    
+
     except Exception as e:
         return RemoveFileResponse(
             success=False,
@@ -1196,14 +1211,14 @@ async def update_file_path(
     try:
         with get_database(db_path) as db:
             success = db.update_file_path(request.old_path, request.new_path)
-            
+
             return UpdateFilePathResponse(
                 success=success,
                 old_path=request.old_path,
                 new_path=request.new_path,
                 error=None if success else "File not found in index"
             )
-    
+
     except Exception as e:
         return UpdateFilePathResponse(
             success=False,
@@ -1222,25 +1237,25 @@ class ModelsRequest(BaseModel):
 async def get_available_models(request: ModelsRequest = None):
     """
     Get available LLM models from the OpenAI API
-    
+
     Supports custom API key and base URL for testing different configurations.
     Returns a list of available models that can be used for chat completions.
     """
     try:
         # Determine which client to use
         client_to_use = openai_client
-        
+
         # If custom API key or base URL provided, create a temporary client
         if request and (request.api_key or request.base_url):
             api_key = request.api_key or os.getenv("OPENAI_API_KEY")
             base_url = request.base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            
+
             if not api_key:
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail="API key is required when using custom configuration"
                 )
-            
+
             client_to_use = openai.OpenAI(
                 api_key=api_key,
                 base_url=base_url
@@ -1248,15 +1263,15 @@ async def get_available_models(request: ModelsRequest = None):
             print(f"[API] Using custom client for models - API Key: {api_key[:10]}..., Base URL: {base_url}")
         elif not openai_client:
             raise HTTPException(
-                status_code=503, 
+                status_code=503,
                 detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables or provide custom credentials."
             )
         else:
-            print(f"[API] Using global client for models")
-        
+            print("[API] Using global client for models")
+
         # Get models from OpenAI API
         models_response = client_to_use.models.list()
-        
+
         # Format response to match OpenAI models API format
         models_list = []
         for model in models_response.data:
@@ -1269,26 +1284,26 @@ async def get_available_models(request: ModelsRequest = None):
                 "root": model.id,
                 "parent": None
             })
-        
+
         # Sort models by ID for consistent ordering
         models_list.sort(key=lambda x: x['id'])
-        
+
         return {
             "object": "list",
             "data": models_list
         }
-        
+
     except Exception as e:
         # If API call fails, return common models as fallback
         print(f"Failed to get models from API: {e}")
         fallback_models = [
             "gpt-4",
             "gpt-4-turbo",
-            "gpt-4.1-mini", 
+            "gpt-4.1-mini",
             "gpt-3.5-turbo",
             "gpt-3.5-turbo-16k"
         ]
-        
+
         models_list = []
         for model_id in fallback_models:
             models_list.append({
@@ -1300,44 +1315,42 @@ async def get_available_models(request: ModelsRequest = None):
                 "root": model_id,
                 "parent": None
             })
-        
+
         return {
             "object": "list",
             "data": models_list
         }
 
 
-
-
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completions endpoint
-    
+
     Supports both streaming and non-streaming responses.
     All prompts should be packaged in the frontend and call this unified endpoint.
     """
     try:
         # Convert Pydantic models to OpenAI format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-        
+
         # Determine which model to use
         model_to_use = request.model if request.model else os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-        
+
         # Determine which client to use
         client_to_use = openai_client
-        
+
         # If custom API key or base URL provided, create a temporary client
         if request.api_key or request.base_url:
             api_key = request.api_key or os.getenv("OPENAI_API_KEY")
             base_url = request.base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-            
+
             if not api_key:
                 raise HTTPException(
-                    status_code=400, 
+                    status_code=400,
                     detail="API key is required when using custom configuration"
                 )
-            
+
             client_to_use = openai.OpenAI(
                 api_key=api_key,
                 base_url=base_url
@@ -1345,14 +1358,19 @@ async def chat_completions(request: ChatCompletionRequest):
             print(f"[API] Using custom client - API Key: {api_key[:10]}..., Base URL: {base_url}")
         elif not openai_client:
             raise HTTPException(
-                status_code=503, 
+                status_code=503,
                 detail="LLM service not available. Please configure OPENAI_API_KEY in environment variables or provide custom credentials."
             )
         else:
-            print(f"[API] Using global client")
-        
-        print(f"[API] Using model: {model_to_use} (requested: {request.model}, default: {os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')})")
-        
+            print("[API] Using global client")
+
+        print(
+            f"[API] Using model: {model_to_use} (requested: {
+                request.model}, default: {
+                os.getenv(
+                    'OPENAI_MODEL',
+                    'gpt-4.1-mini')})")
+
         # Call OpenAI API
         completion = client_to_use.chat.completions.create(
             model=model_to_use,
@@ -1361,7 +1379,7 @@ async def chat_completions(request: ChatCompletionRequest):
             max_tokens=request.max_tokens,
             temperature=request.temperature
         )
-        
+
         if request.stream:
             # Stream response
             async def generate_stream():
@@ -1386,12 +1404,12 @@ async def chat_completions(request: ChatCompletionRequest):
                             chunk_content = choice.delta.content if choice.delta and choice.delta.content else ""
                             if chunk_content:
                                 print(f"[API] Streaming chunk: {repr(chunk_content)}")
-                            
+
                             yield f"data: {json.dumps(stream_data)}\n\n"
-                            
+
                             # Add a small delay to ensure proper streaming behavior
                             await asyncio.sleep(0.01)
-                    
+
                     print("[API] Stream completed, sending [DONE]")
                     yield "data: [DONE]\n\n"
                 except Exception as e:
@@ -1403,7 +1421,7 @@ async def chat_completions(request: ChatCompletionRequest):
                         }
                     }
                     yield f"data: {json.dumps(error_data)}\n\n"
-            
+
             return StreamingResponse(
                 generate_stream(),
                 media_type="text/plain",
@@ -1436,9 +1454,9 @@ async def chat_completions(request: ChatCompletionRequest):
                     "total_tokens": completion.usage.total_tokens if completion.usage else 0
                 } if completion.usage else None
             )
-            
+
             return response_data
-    
+
     except Exception as e:
         print(f"❌ Chat completion error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Chat completion failed: {str(e)}")
@@ -1446,28 +1464,28 @@ async def chat_completions(request: ChatCompletionRequest):
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Document Search API Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8001, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
     parser.add_argument("--db", default=DEFAULT_DB_PATH, help="Database file path")
-    
+
     args = parser.parse_args()
-    
+
     # Update global database path
     DEFAULT_DB_PATH = args.db
-    
-    print(f"🚀 Starting Document Search API Server...")
+
+    print("🚀 Starting Document Search API Server...")
     if args.host != 'localhost' or args.port != 8001 or os.getenv('DEBUG'):
         print(f"📊 Database: {DEFAULT_DB_PATH}")
         print(f"🌐 Server: http://{args.host}:{args.port}")
         print(f"📚 API Docs: http://{args.host}:{args.port}/docs")
         print(f"📖 ReDoc: http://{args.host}:{args.port}/redoc")
-    
+
     # Clean up port before starting
     cleanup_port(args.port, args.host)
-    
+
     try:
         # Use direct app reference instead of module string for PyInstaller compatibility
         uvicorn.run(
